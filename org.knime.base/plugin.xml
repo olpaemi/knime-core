@@ -1930,6 +1930,10 @@
             deprecated="false"
             factory-class="org.knime.base.node.meta.feature.selection.FeatureSelectionLoopStartNodeFactory2">
       </node>
+      <node
+            deprecated="false"
+            factory-class="org.knime.base.node.meta.looper.window.LoopStartWindowNodeFactory">
+      </node>
    </extension>
    
       
