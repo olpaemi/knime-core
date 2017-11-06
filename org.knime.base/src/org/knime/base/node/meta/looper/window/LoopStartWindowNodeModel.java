@@ -49,8 +49,15 @@ package org.knime.base.node.meta.looper.window;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.LinkedList;
 
+import org.knime.core.data.DataCell;
+import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
+import org.knime.core.data.DataType;
+import org.knime.core.data.RowKey;
 import org.knime.core.data.container.CloseableRowIterator;
 import org.knime.core.node.BufferedDataContainer;
 import org.knime.core.node.BufferedDataTable;
@@ -64,23 +71,35 @@ import org.knime.core.node.NodeSettingsWO;
 import org.knime.core.node.workflow.LoopStartNodeTerminator;
 
 /**
- * Loop start node that outputs a set of rows at a time. Used to implement
- * a streaming (or chunking approach) where only a set of rows is processed at
- * a time
+ * Loop start node that outputs a set of rows at a time. Used to implement a streaming (or chunking approach) where only
+ * a set of rows is processed at a time
  *
  * @author Bernd Wiswedel, KNIME AG, Zurich, Switzerland
  */
-public class LoopStartWindowNodeModel extends NodeModel implements
-        LoopStartNodeTerminator {
+public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeTerminator {
 
     private LoopStartWindowConfiguration m_config;
 
     // loop invariants
-    private BufferedDataTable m_table;
+//    private BufferedDataTable m_table;
+
     private CloseableRowIterator m_iterator;
 
     // loop variants
-    private int m_iteration;
+//    private int m_iteration;
+
+    // number of columns
+    private int nColumns;
+
+    // index of current row
+    private long currRow;
+    private long rowCount;
+
+    // true if bufferRows has been filled once
+    private boolean removeBufferedRows = false;
+
+    // buffered rows used for overlapping
+    private LinkedList<DataRow> bufferedRows;
 
     /**
      * Creates a new model.
@@ -93,15 +112,14 @@ public class LoopStartWindowNodeModel extends NodeModel implements
      * {@inheritDoc}
      */
     @Override
-    protected DataTableSpec[] configure(final DataTableSpec[] inSpecs)
-            throws InvalidSettingsException {
+    protected DataTableSpec[] configure(final DataTableSpec[] inSpecs) throws InvalidSettingsException {
         if (m_config == null) {
             m_config = new LoopStartWindowConfiguration();
             setWarningMessage("Using default: " + m_config);
         }
-        assert m_iteration == 0;
-        pushFlowVariableInt("currentIteration", m_iteration);
-        pushFlowVariableInt("maxIterations", 0);
+//        assert m_iteration == 0;
+//        pushFlowVariableInt("currentIteration", m_iteration);
+//        pushFlowVariableInt("maxIterations", 0);
         return inSpecs;
     }
 
@@ -109,46 +127,232 @@ public class LoopStartWindowNodeModel extends NodeModel implements
      * {@inheritDoc}
      */
     @Override
-    protected BufferedDataTable[] execute(final BufferedDataTable[] inData,
-            final ExecutionContext exec) throws Exception {
+    protected BufferedDataTable[] execute(final BufferedDataTable[] inData, final ExecutionContext exec)
+        throws Exception {
         BufferedDataTable table = inData[0];
-        int rowCount = table.getRowCount();
+        rowCount = table.size();
 
-        int totalChunkCount;
-        int nrRowsPerIteration;
-        switch (m_config.getMode()) {
-        case SLIDING:
-            totalChunkCount = Math.min(m_config.getWindowSize(), rowCount);
-            nrRowsPerIteration = (int)Math.ceil(
-                    rowCount / (double)totalChunkCount);
-            break;
-        case TUMBLING:
-            nrRowsPerIteration = m_config.getStepSize();
-            totalChunkCount = (int)Math.ceil(
-                    rowCount / (double)nrRowsPerIteration);
-            break;
-        default:
-            throw new Exception("Unsupported mode: " + m_config.getMode());
-        }
-
-        if (m_iteration == 0) {
-            assert getLoopEndNode() == null : "1st iteration but end node set";
-            m_table = table;
+        if (currRow == 0) {
             m_iterator = table.iterator();
-        } else {
-            assert getLoopEndNode() != null : "No end node set";
-            assert table == m_table : "Input tables differ between iterations";
+            bufferedRows = new LinkedList<>();
+
+            nColumns = table.getSpec().getNumColumns();
         }
 
-        BufferedDataContainer cont = exec.createDataContainer(table.getSpec());
-        for (int i = 0; i < nrRowsPerIteration && m_iterator.hasNext(); i++) {
-            cont.addRowToTable(m_iterator.next());
+        switch (m_config.getWindowDefinition()) {
+            case BACKWARD:
+                return executeBackward(table, exec);
+
+            case CENTRAL:
+                return executeCentral(table, exec);
+
+            case FORWARD:
+                return executeForward(table, exec);
+
+            default:
+                return null;
         }
-        cont.close();
-        pushFlowVariableInt("currentIteration", m_iteration);
-        pushFlowVariableInt("maxIterations", totalChunkCount);
-        m_iteration++;
-        return new BufferedDataTable[] {cont.getTable()};
+    }
+
+    /**
+     * Executes backward windowing.
+     *
+     * @param table input data
+     * @param exec ExecutionContext
+     * @return BufferedDataTable containing the current loop.
+     */
+    private BufferedDataTable[] executeBackward(final BufferedDataTable table, final ExecutionContext exec) {
+        int windowSize = (int)Math.min(m_config.getWindowSize(), rowCount);
+        int stepSize = m_config.getStepSize();
+        int currRowCount = 0;
+
+        BufferedDataContainer container = exec.createDataContainer(table.getSpec());
+        Iterator<DataRow> bufferedIterator = bufferedRows.iterator();
+
+        /* Jump to next following row if step size is greater than the window size. */
+        if (stepSize > windowSize && currRow > 0) {
+            int diff = stepSize - windowSize;
+
+            while (diff > 0 && m_iterator.hasNext()) {
+                m_iterator.next();
+                diff--;
+            }
+        }
+
+        /* Add missing preceding rows to fill up the window. */
+        while (container.size() < windowSize - 1 - bufferedRows.size()) {
+            container.addRowToTable(new MissingRow(nColumns));
+        }
+
+        /* Add buffered rows that overlap. */
+        while (bufferedIterator.hasNext()) {
+            container.addRowToTable(bufferedIterator.next());
+
+            if (currRowCount < stepSize) {
+                bufferedIterator.remove();
+            }
+
+            currRowCount++;
+        }
+
+        /* Add newly read rows. */
+        for (; container.size() < windowSize && m_iterator.hasNext(); currRowCount++) {
+            DataRow dRow = m_iterator.next();
+
+            if (currRowCount >= stepSize) {
+                bufferedRows.add(dRow);
+            }
+
+            container.addRowToTable(dRow);
+        }
+
+        currRow += stepSize;
+
+        container.close();
+
+        return new BufferedDataTable[]{container.getTable()};
+    }
+
+    /**
+     * Executes central windowing
+     *
+     * @param table input data
+     * @param exec ExecutionContext
+     * @return BufferedDataTable containing the current loop.
+     */
+    private BufferedDataTable[] executeCentral(final BufferedDataTable table, final ExecutionContext exec) {
+        int windowSize = (int)Math.min(m_config.getWindowSize(), rowCount);
+        int stepSize = m_config.getStepSize();
+        int currRowCount = 0;
+
+        /* Ensures that the buffer has been filled at least once, i.e., no rows are removed when we have to fill up with empty rows at the beginning of the loop. */
+        removeBufferedRows = removeBufferedRows || bufferedRows.size() == windowSize - stepSize;
+
+        BufferedDataContainer container = exec.createDataContainer(table.getSpec());
+        Iterator<DataRow> bufferedIterator = bufferedRows.iterator();
+
+        if (currRow < Math.floorDiv(windowSize, 2)) {
+            /* Fill missing preceding rows with missing values. Only needed at the start of*/
+            while (container.size() < Math.floorDiv(windowSize, 2) - bufferedRows.size()) {
+                container.addRowToTable(new MissingRow(nColumns));
+            }
+        }
+
+        /* Jump to next following row if step size is greater than the window size.*/
+        if (stepSize > windowSize && currRow > 0) {
+            int diff = stepSize - windowSize;
+
+            while (diff > 0 && m_iterator.hasNext()) {
+                m_iterator.next();
+                diff--;
+            }
+        }
+
+        /* Add buffered rows that overlap. */
+        while (bufferedIterator.hasNext()) {
+            container.addRowToTable(bufferedIterator.next());
+
+            if (currRowCount < stepSize && removeBufferedRows) {
+                bufferedIterator.remove();
+            }
+
+            currRowCount++;
+        }
+
+        /* Add newly read rows. */
+        for (; container.size() < windowSize && m_iterator.hasNext(); currRowCount++) {
+            DataRow dRow = m_iterator.next();
+
+            if (currRowCount >= stepSize - Math.floorDiv(windowSize, 2)) {
+                bufferedRows.add(dRow);
+            }
+
+            container.addRowToTable(dRow);
+        }
+
+        /* Add missing rows to fill up the window. */
+        while (container.size() < windowSize) {
+            container.addRowToTable(new MissingRow(nColumns));
+        }
+
+        currRow += stepSize;
+
+        container.close();
+
+        return new BufferedDataTable[]{container.getTable()};
+    }
+
+    /**
+     * Executes forward windowing
+     *
+     * @param table input data
+     * @param exec ExecutionContext
+     * @return BufferedDataTable containing the current loop.
+     */
+    private BufferedDataTable[] executeForward(final BufferedDataTable table, final ExecutionContext exec) {
+        int windowSize = (int)Math.min(m_config.getWindowSize(), rowCount);
+
+        /** TODO: Tumbling */
+        //        if (m_config.getMode() == Mode.TUMBLING) {
+        //            BufferedDataContainer container = exec.createDataContainer(table.getSpec());
+        //
+        //            for (int i = 0; i < windowSize && m_iterator.hasNext(); i++) {
+        //                container.addRowToTable(m_iterator.next());
+        //            }
+        //
+        //            container.close();
+        //
+        //            return new BufferedDataTable[]{container.getTable()};
+        //        }
+
+        int stepSize = m_config.getStepSize();
+        int currRowCount = 0;
+
+        /* Jump to next following row if step size is greater than the window size.*/
+        if (stepSize > windowSize && currRow > 0) {
+            int diff = stepSize - windowSize;
+
+            while (diff > 0 && m_iterator.hasNext()) {
+                m_iterator.next();
+                diff--;
+            }
+        }
+
+        BufferedDataContainer container = exec.createDataContainer(table.getSpec());
+        Iterator<DataRow> bufferedIterator = bufferedRows.iterator();
+
+        /* Add buffered rows that overlap. */
+        while (bufferedIterator.hasNext()) {
+            container.addRowToTable(bufferedIterator.next());
+
+            if (currRowCount < stepSize) {
+                bufferedIterator.remove();
+            }
+
+            currRowCount++;
+        }
+
+        /* Add newly read rows. */
+        for (; container.size() < windowSize && m_iterator.hasNext(); currRowCount++) {
+            DataRow dRow = m_iterator.next();
+
+            if (currRowCount >= stepSize) {
+                bufferedRows.add(dRow);
+            }
+
+            container.addRowToTable(dRow);
+        }
+
+        /* Add missing rows to fill up the window. */
+        while (currRowCount < windowSize) {
+            container.addRowToTable(new MissingRow(nColumns));
+        }
+
+        currRow += stepSize;
+
+        container.close();
+
+        return new BufferedDataTable[]{container.getTable()};
     }
 
     /**
@@ -156,19 +360,20 @@ public class LoopStartWindowNodeModel extends NodeModel implements
      */
     @Override
     protected void reset() {
-        m_iteration = 0;
+        removeBufferedRows = false;
+        currRow = 0;
+//        m_iteration = 0;
         if (m_iterator != null) {
             m_iterator.close();
         }
         m_iterator = null;
-        m_table = null;
+//        m_table = null;
     }
 
     /** {@inheritDoc} */
     @Override
     public boolean terminateLoop() {
-        boolean continueLoop = m_iterator == null || m_iterator.hasNext();
-        return !continueLoop;
+       return currRow >= rowCount;
     }
 
     /**
@@ -185,8 +390,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements
      * {@inheritDoc}
      */
     @Override
-    protected void validateSettings(final NodeSettingsRO settings)
-            throws InvalidSettingsException {
+    protected void validateSettings(final NodeSettingsRO settings) throws InvalidSettingsException {
         new LoopStartWindowConfiguration().loadSettingsInModel(settings);
     }
 
@@ -194,8 +398,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements
      * {@inheritDoc}
      */
     @Override
-    protected void loadValidatedSettingsFrom(final NodeSettingsRO settings)
-            throws InvalidSettingsException {
+    protected void loadValidatedSettingsFrom(final NodeSettingsRO settings) throws InvalidSettingsException {
         LoopStartWindowConfiguration config = new LoopStartWindowConfiguration();
         config.loadSettingsInModel(settings);
         m_config = config;
@@ -205,9 +408,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements
      * {@inheritDoc}
      */
     @Override
-    protected void loadInternals(final File nodeInternDir,
-            final ExecutionMonitor exec) throws IOException,
-            CanceledExecutionException {
+    protected void loadInternals(final File nodeInternDir, final ExecutionMonitor exec)
+        throws IOException, CanceledExecutionException {
         // no internals to load
     }
 
@@ -215,9 +417,60 @@ public class LoopStartWindowNodeModel extends NodeModel implements
      * {@inheritDoc}
      */
     @Override
-    protected void saveInternals(final File nodeInternDir,
-            final ExecutionMonitor exec) throws IOException,
-            CanceledExecutionException {
+    protected void saveInternals(final File nodeInternDir, final ExecutionMonitor exec)
+        throws IOException, CanceledExecutionException {
         // no internals to save
+    }
+
+    /**
+     * An InputRow with solely missing data cells, needed for different window definitions. Copied:
+     * org.knime.base.node.preproc.joiner.DataHiliteOutputContainer.Missing
+     *
+     * @author Heiko Hofer
+     */
+    static class MissingRow implements DataRow {
+        private DataCell[] m_cells;
+
+        /**
+         * @param numCells The number of cells in the {@link DataRow}
+         */
+        public MissingRow(final int numCells) {
+            m_cells = new DataCell[numCells];
+            for (int i = 0; i < numCells; i++) {
+                m_cells[i] = DataType.getMissingCell();
+            }
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public RowKey getKey() {
+            return null;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public DataCell getCell(final int index) {
+            return m_cells[index];
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public int getNumCells() {
+            return m_cells.length;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public Iterator<DataCell> iterator() {
+            return Arrays.asList(m_cells).iterator();
+        }
     }
 }

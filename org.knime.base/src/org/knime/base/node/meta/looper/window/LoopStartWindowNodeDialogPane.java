@@ -48,7 +48,8 @@
 package org.knime.base.node.meta.looper.window;
 
 import java.awt.FlowLayout;
-import java.awt.GridLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
@@ -73,9 +74,19 @@ import org.knime.core.node.NotConfigurableException;
  */
 public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
 
-    private final JRadioButton m_tumblingButton;
+    private final JRadioButton m_tumblingWindow;
 
     private final JRadioButton m_slidingWindow;
+
+    private final JRadioButton m_forward;
+
+    private final JRadioButton m_central;
+
+    private final JRadioButton m_backward;
+
+    private final JRadioButton m_eventTrig;
+
+    private final JRadioButton m_timeTrig;
 
     private final JSpinner m_stepSizeSpinner;
 
@@ -86,8 +97,9 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
      */
     public LoopStartWindowNodeDialogPane() {
         ButtonGroup bg = new ButtonGroup();
-        m_tumblingButton = new JRadioButton("Tumbling");
+        m_tumblingWindow = new JRadioButton("Tumbling");
         m_slidingWindow = new JRadioButton("Sliding");
+
         ActionListener al = new ActionListener() {
             /** {@inheritDoc} */
             @Override
@@ -95,13 +107,38 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
                 onNewSelection();
             }
         };
-        m_tumblingButton.addActionListener(al);
+
+        m_tumblingWindow.addActionListener(al);
         m_slidingWindow.addActionListener(al);
-        bg.add(m_tumblingButton);
+
+        bg.add(m_tumblingWindow);
         bg.add(m_slidingWindow);
+
+
+        bg = new ButtonGroup();
+
+        m_forward = new JRadioButton("Forward");
+        m_backward = new JRadioButton("Backward");
+        m_central = new JRadioButton("Central");
+
+        bg.add(m_forward);
+        bg.add(m_central);
+        bg.add(m_backward);
+
+        bg = new ButtonGroup();
+        m_eventTrig = new JRadioButton("Event triggered");
+        m_timeTrig = new JRadioButton("Time triggered");
+
+        bg.add(m_eventTrig);
+        bg.add(m_timeTrig);
+
         m_windowSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 5));
         m_stepSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 10));
-        m_tumblingButton.doClick();
+
+        m_tumblingWindow.doClick();
+        m_forward.doClick();
+        m_eventTrig.doClick();
+
         initLayout();
     }
 
@@ -109,11 +146,54 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
      *
      */
     private void initLayout() {
-        JPanel panel = new JPanel(new GridLayout(0, 2));
-        panel.add(getInFlowLayout(m_tumblingButton));
-        panel.add(getInFlowLayout(m_stepSizeSpinner));
-        panel.add(getInFlowLayout(m_slidingWindow));
-        panel.add(getInFlowLayout(m_windowSizeSpinner));
+        GridBagLayout gbl = new GridBagLayout();
+        JPanel panel = new JPanel(gbl);
+
+        GridBagConstraints constraint = new GridBagConstraints();
+
+        constraint.gridx = 1;
+        constraint.gridy = 1;
+
+        panel.add(m_slidingWindow, constraint);
+
+        constraint.gridx++;
+
+        panel.add(m_tumblingWindow, constraint);
+
+        constraint.gridx = 1;
+        constraint.gridy++;
+
+        panel.add(m_windowSizeSpinner, constraint);
+
+        constraint.gridy++;
+
+        panel.add(m_stepSizeSpinner, constraint);
+
+        constraint.gridy++;
+
+        panel.add(m_forward, constraint);
+
+        constraint.gridx++;
+
+        panel.add(m_central, constraint);
+
+        constraint.gridx++;
+
+        panel.add(m_backward, constraint);
+
+
+        constraint.gridx = 1;
+        constraint.gridy++;
+
+        panel.add(m_eventTrig, constraint);
+
+
+        constraint.gridx++;
+
+        panel.add(m_timeTrig, constraint);
+
+
+
         addTab("Configuration", panel);
     }
 
@@ -133,7 +213,7 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
      *
      */
     private void onNewSelection() {
-        boolean isRowCountPerChunk = m_tumblingButton.isSelected();
+        boolean isRowCountPerChunk = m_tumblingWindow.isSelected();
         m_windowSizeSpinner.setEnabled(!isRowCountPerChunk);
         m_stepSizeSpinner.setEnabled(isRowCountPerChunk);
     }
@@ -148,7 +228,7 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         m_stepSizeSpinner.setValue(config.getStepSize());
         switch (config.getMode()) {
             case TUMBLING:
-                m_tumblingButton.doClick();
+                m_tumblingWindow.doClick();
                 break;
             default:
                 m_slidingWindow.doClick();
@@ -161,7 +241,7 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         LoopStartWindowConfiguration config = new LoopStartWindowConfiguration();
         config.setWindowSize((Integer)m_windowSizeSpinner.getValue());
         config.setStepSize((Integer)m_stepSizeSpinner.getValue());
-        if (m_tumblingButton.isSelected()) {
+        if (m_tumblingWindow.isSelected()) {
             config.setMode(Mode.TUMBLING);
         } else {
             config.setMode(Mode.SLIDING);

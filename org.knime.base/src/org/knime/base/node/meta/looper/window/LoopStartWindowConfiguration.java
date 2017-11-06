@@ -53,76 +53,108 @@ import org.knime.core.node.NodeSettingsWO;
 
 /**
  * Configuration object to loop start chunking node.
+ *
  * @author Bernd Wiswedel, KNIME AG, Zurich, Switzerland
  */
 final class LoopStartWindowConfiguration {
 
     /** Policy how to do the chunking. */
     enum Mode {
-        /** Use tumbling for windowing. */
-        TUMBLING,
-        /** Use sliding for windowing. */
-        SLIDING
+            /** Use tumbling for windowing. */
+            TUMBLING,
+            /** Use sliding for windowing. */
+            SLIDING
+    }
+
+    /** Window definition */
+    enum WindowDefinition {
+            /** Point of interest in the center of window. */
+            CENTRAL,
+            /** Point of interest at the beginning of the window. */
+            FORWARD,
+            /** Point of interest at the end of the window. */
+            BACKWARD
     }
 
     private Mode m_mode = Mode.TUMBLING;
+
+    private WindowDefinition m_definition = WindowDefinition.FORWARD;
+
     private int m_stepSize = 1;
+
     private int m_windowSize = 1;
 
     /** @return the mode */
     Mode getMode() {
         return m_mode;
     }
-    /** @param mode the mode to set
-     * @throws InvalidSettingsException If argument is null. */
+
+    /** @return the window definition */
+    WindowDefinition getWindowDefinition(){
+        return m_definition;
+    }
+
+    /**
+     * @param mode the mode to set
+     * @throws InvalidSettingsException If argument is null.
+     */
     void setMode(final Mode mode) throws InvalidSettingsException {
         if (mode == null) {
             throw new InvalidSettingsException("Mode must not be null");
         }
         m_mode = mode;
     }
+
     /** @return the stepSize */
     int getStepSize() {
         return m_stepSize;
     }
-    /** @param stepSize the stepSize to set
-     * @throws InvalidSettingsException If argument &lt; 1*/
-    void setStepSize(final int stepSize)
-        throws InvalidSettingsException {
+
+    /**
+     * @param stepSize the stepSize to set
+     * @throws InvalidSettingsException If argument &lt; 1
+     */
+    void setStepSize(final int stepSize) throws InvalidSettingsException {
         if (stepSize < 1) {
-            throw new IllegalArgumentException("No of rows per chunk must "
-                    + "be at least 1: " + stepSize);
+            throw new IllegalArgumentException("No of rows per chunk must " + "be at least 1: " + stepSize);
         }
         m_stepSize = stepSize;
     }
+
     /** @return the windowSize */
     int getWindowSize() {
         return m_windowSize;
     }
-    /** @param windowSize the windowSize to set
-    * @throws InvalidSettingsException If argument &lt; 1*/
+
+    /**
+     * @param windowSize the windowSize to set
+     * @throws InvalidSettingsException If argument &lt; 1
+     */
     void setWindowSize(final int windowSize) throws InvalidSettingsException {
         if (windowSize < 1) {
-            throw new IllegalArgumentException("No of chunks must "
-                    + "be at least 1: " + windowSize);
+            throw new IllegalArgumentException("No of chunks must " + "be at least 1: " + windowSize);
         }
         m_windowSize = windowSize;
     }
 
-    /** Saves current settings to argument.
-     * @param settings To save to. */
+    /**
+     * Saves current settings to argument.
+     *
+     * @param settings To save to.
+     */
     void saveSettingsTo(final NodeSettingsWO settings) {
         settings.addString("mode", m_mode.name());
         settings.addInt("stepSize", m_stepSize);
         settings.addInt("windowSize", m_windowSize);
     }
 
-    /** Load settings in model, fails if incomplete.
+    /**
+     * Load settings in model, fails if incomplete.
+     *
      * @param settings To load from.
      * @throws InvalidSettingsException If invalid.
      */
-    void loadSettingsInModel(final NodeSettingsRO settings)
-        throws InvalidSettingsException {
+    void loadSettingsInModel(final NodeSettingsRO settings) throws InvalidSettingsException {
         String modeS = settings.getString("mode");
         if (modeS == null) {
             modeS = Mode.TUMBLING.name();
@@ -136,7 +168,9 @@ final class LoopStartWindowConfiguration {
         setWindowSize(settings.getInt("windowSize"));
     }
 
-    /** Load settings in dialog, use default if invalid.
+    /**
+     * Load settings in dialog, use default if invalid.
+     *
      * @param settings To load from.
      */
     void loadSettingsInDialog(final NodeSettingsRO settings) {
@@ -165,13 +199,13 @@ final class LoopStartWindowConfiguration {
     @Override
     public String toString() {
         switch (m_mode) {
-        case SLIDING:
-            return "sliding mode (window size: " + m_windowSize + ", step size: "+m_stepSize+")";
-        case TUMBLING:
-            return "tumbling mode (window size: " + m_windowSize + ", step size: "+m_stepSize+")";
-        default:
-            assert false : "Uncovered case";
-            return "unknown";
+            case SLIDING:
+                return "sliding mode (window size: " + m_windowSize + ", step size: " + m_stepSize + ")";
+            case TUMBLING:
+                return "tumbling mode (window size: " + m_windowSize + ", step size: " + m_stepSize + ")";
+            default:
+                assert false : "Uncovered case";
+                return "unknown";
         }
     }
 
