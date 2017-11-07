@@ -59,7 +59,7 @@ import org.knime.core.node.NodeSettingsWO;
 final class LoopStartWindowConfiguration {
 
     /** Policy how to do the chunking. */
-    enum Mode {
+    enum WindowMode {
             /** Use tumbling for windowing. */
             TUMBLING,
             /** Use sliding for windowing. */
@@ -76,38 +76,77 @@ final class LoopStartWindowConfiguration {
             BACKWARD
     }
 
-    private Mode m_mode = Mode.TUMBLING;
+    enum Trigger {
+            /** Event triggered. */
+            EVENT,
+            /** Time triggered. */
+            TIME
+    }
 
-    private WindowDefinition m_definition = WindowDefinition.FORWARD;
+    private WindowMode windowMode = WindowMode.TUMBLING;
 
-    private int m_stepSize = 1;
+    private WindowDefinition windowDefinition = WindowDefinition.FORWARD;
 
-    private int m_windowSize = 1;
+    private Trigger trigger = Trigger.EVENT;
 
-    /** @return the mode */
-    Mode getMode() {
-        return m_mode;
+    private int stepSize = 1;
+
+    private int windowSize = 1;
+
+    /** @return the window mode */
+    WindowMode getWindowMode() {
+        return windowMode;
     }
 
     /** @return the window definition */
-    WindowDefinition getWindowDefinition(){
-        return m_definition;
+    WindowDefinition getWindowDefinition() {
+        return windowDefinition;
+    }
+
+    /** @return the trigger */
+    Trigger getTrigger() {
+        return trigger;
     }
 
     /**
-     * @param mode the mode to set
+     * @param mode the window mode to set
      * @throws InvalidSettingsException If argument is null.
      */
-    void setMode(final Mode mode) throws InvalidSettingsException {
+    void setWindowMode(final WindowMode mode) throws InvalidSettingsException {
         if (mode == null) {
-            throw new InvalidSettingsException("Mode must not be null");
+            throw new InvalidSettingsException("Window mode must not be null");
         }
-        m_mode = mode;
+
+        windowMode = mode;
     }
 
-    /** @return the stepSize */
+    /**
+     * @param definition the window definition to set
+     * @throws InvalidSettingsException If argument is null.
+     */
+    void setWindowDefinition(final WindowDefinition definition) throws InvalidSettingsException {
+        if (definition == null) {
+            throw new InvalidSettingsException("Window definition must not be null");
+        }
+
+        windowDefinition = definition;
+    }
+
+    /**
+     * @param trigger the trigger to set
+     * @throws InvalidSettingsException If argument is null.
+     */
+    void setTrigger(final Trigger trigger) throws InvalidSettingsException {
+        if (trigger == null) {
+            throw new InvalidSettingsException("Trigger must not be null");
+        }
+
+        this.trigger = trigger;
+    }
+
+    /** @return the step size. */
     int getStepSize() {
-        return m_stepSize;
+        return stepSize;
     }
 
     /**
@@ -116,25 +155,27 @@ final class LoopStartWindowConfiguration {
      */
     void setStepSize(final int stepSize) throws InvalidSettingsException {
         if (stepSize < 1) {
-            throw new IllegalArgumentException("No of rows per chunk must " + "be at least 1: " + stepSize);
+            throw new IllegalArgumentException("Step size must be at least 1: " + stepSize);
         }
-        m_stepSize = stepSize;
+
+        this.stepSize = stepSize;
     }
 
-    /** @return the windowSize */
+    /** @return the size of the window. */
     int getWindowSize() {
-        return m_windowSize;
+        return windowSize;
     }
 
     /**
-     * @param windowSize the windowSize to set
+     * @param windowSize the size of window to set
      * @throws InvalidSettingsException If argument &lt; 1
      */
     void setWindowSize(final int windowSize) throws InvalidSettingsException {
         if (windowSize < 1) {
-            throw new IllegalArgumentException("No of chunks must " + "be at least 1: " + windowSize);
+            throw new IllegalArgumentException("Window size must be at least 1: " + windowSize);
         }
-        m_windowSize = windowSize;
+
+        this.windowSize = windowSize;
     }
 
     /**
@@ -143,9 +184,11 @@ final class LoopStartWindowConfiguration {
      * @param settings To save to.
      */
     void saveSettingsTo(final NodeSettingsWO settings) {
-        settings.addString("mode", m_mode.name());
-        settings.addInt("stepSize", m_stepSize);
-        settings.addInt("windowSize", m_windowSize);
+        settings.addString("windowMode", windowMode.name());
+        settings.addInt("stepSize", stepSize);
+        settings.addInt("windowSize", windowSize);
+        settings.addString("trigger", trigger.name());
+        settings.addString("windowDefinition", windowDefinition.name());
     }
 
     /**
@@ -155,15 +198,42 @@ final class LoopStartWindowConfiguration {
      * @throws InvalidSettingsException If invalid.
      */
     void loadSettingsInModel(final NodeSettingsRO settings) throws InvalidSettingsException {
-        String modeS = settings.getString("mode");
+        String modeS = settings.getString("windowMode");
+
         if (modeS == null) {
-            modeS = Mode.TUMBLING.name();
+            modeS = WindowMode.SLIDING.name();
         }
+
         try {
-            setMode(Mode.valueOf(modeS));
+            setWindowMode(WindowMode.valueOf(modeS));
         } catch (IllegalArgumentException iae) {
-            throw new InvalidSettingsException("Invalid mode: " + modeS);
+            throw new InvalidSettingsException("Invalid window mode: " + modeS);
         }
+
+        String defS = settings.getString("windowDefinition");
+
+        if (defS == null) {
+            defS = WindowDefinition.FORWARD.name();
+        }
+
+        try {
+            setWindowDefinition(WindowDefinition.valueOf(defS));
+        } catch (IllegalArgumentException iae) {
+            throw new InvalidSettingsException("Invalid window definition: " + defS);
+        }
+
+        String triggerS = settings.getString("trigger");
+
+        if (triggerS == null) {
+            triggerS = Trigger.EVENT.name();
+        }
+
+        try {
+            setTrigger(Trigger.valueOf(triggerS));
+        } catch (IllegalArgumentException iae) {
+            throw new InvalidSettingsException("Invalid trigger: " + trigger);
+        }
+
         setStepSize(settings.getInt("stepSize"));
         setWindowSize(settings.getInt("windowSize"));
     }
@@ -174,35 +244,46 @@ final class LoopStartWindowConfiguration {
      * @param settings To load from.
      */
     void loadSettingsInDialog(final NodeSettingsRO settings) {
-        String modeS = settings.getString("mode", Mode.TUMBLING.name());
-        if (modeS == null) {
-            modeS = Mode.TUMBLING.name();
-        }
         try {
-            m_mode = Mode.valueOf(modeS);
-        } catch (IllegalArgumentException iae) {
-            m_mode = Mode.TUMBLING;
+            trigger = Trigger.valueOf(settings.getString("trigger", Trigger.EVENT.name()));
+        } catch (IllegalStateException e) {
+            trigger = Trigger.EVENT;
         }
+
+        try {
+            windowDefinition =
+                WindowDefinition.valueOf(settings.getString("windowDefinition", WindowDefinition.FORWARD.name()));
+        } catch (IllegalArgumentException iae) {
+            windowDefinition = WindowDefinition.FORWARD;
+        }
+
+        try {
+            windowMode = WindowMode.valueOf(settings.getString("windowMode", WindowMode.SLIDING.name()));
+        } catch (IllegalArgumentException iae) {
+            windowMode = WindowMode.SLIDING;
+        }
+
         try {
             setStepSize(settings.getInt("stepSize", 1));
         } catch (InvalidSettingsException ise) {
-            // use default;
+            stepSize = 1;
         }
+
         try {
             setWindowSize(settings.getInt("windowSize", 1));
         } catch (InvalidSettingsException e) {
-            // use default;
+            windowSize = 1;
         }
     }
 
     /** {@inheritDoc} */
     @Override
     public String toString() {
-        switch (m_mode) {
+        switch (windowMode) {
             case SLIDING:
-                return "sliding mode (window size: " + m_windowSize + ", step size: " + m_stepSize + ")";
+                return "sliding mode (window size: " + windowSize + ", step size: " + stepSize + ")";
             case TUMBLING:
-                return "tumbling mode (window size: " + m_windowSize + ", step size: " + m_stepSize + ")";
+                return "tumbling mode (window size: " + windowSize + ", step size: " + stepSize + ")";
             default:
                 assert false : "Uncovered case";
                 return "unknown";

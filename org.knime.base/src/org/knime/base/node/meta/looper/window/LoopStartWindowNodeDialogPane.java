@@ -47,97 +47,134 @@
  */
 package org.knime.base.node.meta.looper.window;
 
-import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
 import javax.swing.ButtonGroup;
-import javax.swing.JComponent;
+import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.JSpinner;
+import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
 
-import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.Mode;
+import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.Trigger;
+import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.WindowDefinition;
+import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.WindowMode;
 import org.knime.core.data.DataTableSpec;
+import org.knime.core.data.time.duration.DurationValue;
+import org.knime.core.data.time.period.PeriodValue;
 import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.NodeDialogPane;
 import org.knime.core.node.NodeSettingsRO;
 import org.knime.core.node.NodeSettingsWO;
 import org.knime.core.node.NotConfigurableException;
+import org.knime.core.node.defaultnodesettings.DialogComponentColumnNameSelection;
+import org.knime.core.node.defaultnodesettings.SettingsModelString;
 
 /**
  *
- * @author Bernd Wiswedel, KNIME AG, Zurich, Switzerland
+ * @author Moritz Heine, KNIME.com, Konstanz, Germany
  */
 public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
 
-    private final JRadioButton m_tumblingWindow;
+    private final JRadioButton tumblingWindowRButton;
 
-    private final JRadioButton m_slidingWindow;
+    private final JRadioButton slidingWindowRButton;
 
-    private final JRadioButton m_forward;
+    private final JRadioButton forwardRButton;
 
-    private final JRadioButton m_central;
+    private final JRadioButton centralRButton;
 
-    private final JRadioButton m_backward;
+    private final JRadioButton backwardRButton;
 
-    private final JRadioButton m_eventTrig;
+    private final JRadioButton eventTrigRButton;
 
-    private final JRadioButton m_timeTrig;
+    private final JRadioButton timeTrigRButton;
 
-    private final JSpinner m_stepSizeSpinner;
+    private final JSpinner stepSizeSpinner;
 
-    private final JSpinner m_windowSizeSpinner;
+    private final JSpinner windowSizeSpinner;
+
+    private final JLabel stepSizeLabel;
+
+    private final JLabel windowSizeLabel;
+
+    private final JTextField timeField;
+
+    private final DialogComponentColumnNameSelection columnSelector;
 
     /**
      *
      */
     public LoopStartWindowNodeDialogPane() {
         ButtonGroup bg = new ButtonGroup();
-        m_tumblingWindow = new JRadioButton("Tumbling");
-        m_slidingWindow = new JRadioButton("Sliding");
+        tumblingWindowRButton = new JRadioButton("Tumbling");
+        slidingWindowRButton = new JRadioButton("Sliding");
 
         ActionListener al = new ActionListener() {
             /** {@inheritDoc} */
             @Override
             public void actionPerformed(final ActionEvent e) {
-                onNewSelection();
+                stepSizeSpinner.setEnabled(slidingWindowRButton.isSelected());
             }
         };
 
-        m_tumblingWindow.addActionListener(al);
-        m_slidingWindow.addActionListener(al);
+        tumblingWindowRButton.addActionListener(al);
+        slidingWindowRButton.addActionListener(al);
 
-        bg.add(m_tumblingWindow);
-        bg.add(m_slidingWindow);
-
-
-        bg = new ButtonGroup();
-
-        m_forward = new JRadioButton("Forward");
-        m_backward = new JRadioButton("Backward");
-        m_central = new JRadioButton("Central");
-
-        bg.add(m_forward);
-        bg.add(m_central);
-        bg.add(m_backward);
+        bg.add(tumblingWindowRButton);
+        bg.add(slidingWindowRButton);
 
         bg = new ButtonGroup();
-        m_eventTrig = new JRadioButton("Event triggered");
-        m_timeTrig = new JRadioButton("Time triggered");
 
-        bg.add(m_eventTrig);
-        bg.add(m_timeTrig);
+        forwardRButton = new JRadioButton("Forward");
+        backwardRButton = new JRadioButton("Backward");
+        centralRButton = new JRadioButton("Central");
 
-        m_windowSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 5));
-        m_stepSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 10));
+        bg.add(forwardRButton);
+        bg.add(centralRButton);
+        bg.add(backwardRButton);
 
-        m_tumblingWindow.doClick();
-        m_forward.doClick();
-        m_eventTrig.doClick();
+        bg = new ButtonGroup();
+        eventTrigRButton = new JRadioButton("Event triggered");
+        timeTrigRButton = new JRadioButton("Time triggered");
+
+        bg.add(eventTrigRButton);
+        bg.add(timeTrigRButton);
+
+        windowSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 5));
+        stepSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 10));
+        timeField = new JTextField("Time-Duration");
+
+        stepSizeLabel = new JLabel("Step size");
+        windowSizeLabel = new JLabel("Window size");
+
+        columnSelector = new DialogComponentColumnNameSelection(createColumnModel(), "time column", 0, false,
+            DurationValue.class, PeriodValue.class);
+
+        ActionListener triggerListener = new ActionListener() {
+
+            @Override
+            public void actionPerformed(final ActionEvent e) {
+                tumblingWindowRButton.setEnabled(eventTrigRButton.isSelected());
+                slidingWindowRButton.setEnabled(eventTrigRButton.isSelected());
+                timeField.setEnabled(!eventTrigRButton.isSelected());
+                columnSelector.getModel().setEnabled(!eventTrigRButton.isSelected());
+                windowSizeSpinner.setEnabled(eventTrigRButton.isSelected());
+                stepSizeSpinner.setEnabled(eventTrigRButton.isSelected() && slidingWindowRButton.isSelected());
+            }
+        };
+
+        eventTrigRButton.addActionListener(triggerListener);
+        timeTrigRButton.addActionListener(triggerListener);
+
+        slidingWindowRButton.doClick();
+        forwardRButton.doClick();
+        eventTrigRButton.doClick();
 
         initLayout();
     }
@@ -151,71 +188,56 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
 
         GridBagConstraints constraint = new GridBagConstraints();
 
+        constraint.anchor = GridBagConstraints.LINE_START;
+        constraint.ipadx = 2;
+        constraint.ipady = 5;
+        constraint.insets = new Insets(2, 2, 2, 2);
         constraint.gridx = 1;
         constraint.gridy = 1;
 
-        panel.add(m_slidingWindow, constraint);
+        panel.add(eventTrigRButton, constraint);
 
         constraint.gridx++;
-
-        panel.add(m_tumblingWindow, constraint);
+        panel.add(timeTrigRButton, constraint);
 
         constraint.gridx = 1;
         constraint.gridy++;
-
-        panel.add(m_windowSizeSpinner, constraint);
-
-        constraint.gridy++;
-
-        panel.add(m_stepSizeSpinner, constraint);
-
-        constraint.gridy++;
-
-        panel.add(m_forward, constraint);
+        panel.add(slidingWindowRButton, constraint);
 
         constraint.gridx++;
-
-        panel.add(m_central, constraint);
-
-        constraint.gridx++;
-
-        panel.add(m_backward, constraint);
-
+        panel.add(tumblingWindowRButton, constraint);
 
         constraint.gridx = 1;
         constraint.gridy++;
-
-        panel.add(m_eventTrig, constraint);
-
+        panel.add(windowSizeLabel, constraint);
 
         constraint.gridx++;
+        panel.add(windowSizeSpinner, constraint);
 
-        panel.add(m_timeTrig, constraint);
+        constraint.gridx++;
+        panel.add(columnSelector.getComponentPanel(), constraint);
 
+        constraint.gridy++;
+        panel.add(timeField, constraint);
 
+        constraint.gridx = 1;
+        constraint.gridy++;
+        panel.add(stepSizeLabel, constraint);
+
+        constraint.gridx++;
+        panel.add(stepSizeSpinner, constraint);
+
+        constraint.gridx = 1;
+        constraint.gridy++;
+        panel.add(forwardRButton, constraint);
+
+        constraint.gridx++;
+        panel.add(centralRButton, constraint);
+
+        constraint.gridx++;
+        panel.add(backwardRButton, constraint);
 
         addTab("Configuration", panel);
-    }
-
-    /**
-     * @param rowsPerChunkButton
-     * @return
-     */
-    private JPanel getInFlowLayout(final JComponent... comps) {
-        JPanel result = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        for (JComponent c : comps) {
-            result.add(c);
-        }
-        return result;
-    }
-
-    /**
-     *
-     */
-    private void onNewSelection() {
-        boolean isRowCountPerChunk = m_tumblingWindow.isSelected();
-        m_windowSizeSpinner.setEnabled(!isRowCountPerChunk);
-        m_stepSizeSpinner.setEnabled(isRowCountPerChunk);
     }
 
     /** {@inheritDoc} */
@@ -224,29 +246,76 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         throws NotConfigurableException {
         LoopStartWindowConfiguration config = new LoopStartWindowConfiguration();
         config.loadSettingsInDialog(settings);
-        m_windowSizeSpinner.setValue(config.getWindowSize());
-        m_stepSizeSpinner.setValue(config.getStepSize());
-        switch (config.getMode()) {
+
+        windowSizeSpinner.setValue(config.getWindowSize());
+        stepSizeSpinner.setValue(config.getStepSize());
+
+        switch (config.getWindowMode()) {
             case TUMBLING:
-                m_tumblingWindow.doClick();
+                tumblingWindowRButton.doClick();
                 break;
             default:
-                m_slidingWindow.doClick();
+                slidingWindowRButton.doClick();
         }
+
+        switch (config.getWindowDefinition()) {
+            case FORWARD:
+                forwardRButton.doClick();
+                break;
+            case BACKWARD:
+                backwardRButton.doClick();
+                break;
+            default:
+                centralRButton.doClick();
+        }
+
+        switch (config.getTrigger()) {
+            case EVENT:
+                eventTrigRButton.doClick();
+                break;
+            default:
+                timeTrigRButton.doClick();
+        }
+
+        columnSelector.loadSettingsFrom(settings, specs);
     }
 
     /** {@inheritDoc} */
     @Override
     protected void saveSettingsTo(final NodeSettingsWO settings) throws InvalidSettingsException {
         LoopStartWindowConfiguration config = new LoopStartWindowConfiguration();
-        config.setWindowSize((Integer)m_windowSizeSpinner.getValue());
-        config.setStepSize((Integer)m_stepSizeSpinner.getValue());
-        if (m_tumblingWindow.isSelected()) {
-            config.setMode(Mode.TUMBLING);
+        config.setWindowSize((Integer)windowSizeSpinner.getValue());
+        config.setStepSize((Integer)stepSizeSpinner.getValue());
+
+        if (tumblingWindowRButton.isSelected()) {
+            config.setWindowMode(WindowMode.TUMBLING);
         } else {
-            config.setMode(Mode.SLIDING);
+            config.setWindowMode(WindowMode.SLIDING);
         }
+
+        if (forwardRButton.isSelected()) {
+            config.setWindowDefinition(WindowDefinition.FORWARD);
+        } else if (backwardRButton.isSelected()) {
+            config.setWindowDefinition(WindowDefinition.BACKWARD);
+        } else {
+            config.setWindowDefinition(WindowDefinition.CENTRAL);
+        }
+
+        if (eventTrigRButton.isSelected()) {
+            config.setTrigger(Trigger.EVENT);
+        } else {
+            config.setTrigger(Trigger.TIME);
+        }
+
         config.saveSettingsTo(settings);
+        columnSelector.saveSettingsTo(settings);
+    }
+
+    /**
+     * @return settings model for column selection
+     */
+    static final SettingsModelString createColumnModel() {
+        return new SettingsModelString("selectedTimeColumn", null);
     }
 
 }
