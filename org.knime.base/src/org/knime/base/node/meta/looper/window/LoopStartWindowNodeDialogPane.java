@@ -53,6 +53,7 @@ import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
+import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -63,7 +64,6 @@ import javax.swing.SpinnerNumberModel;
 
 import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.Trigger;
 import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.WindowDefinition;
-import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.WindowMode;
 import org.knime.core.data.DataTableSpec;
 import org.knime.core.data.time.duration.DurationValue;
 import org.knime.core.data.time.period.PeriodValue;
@@ -81,9 +81,9 @@ import org.knime.core.node.defaultnodesettings.SettingsModelString;
  */
 public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
 
-    private final JRadioButton tumblingWindowRButton;
-
-    private final JRadioButton slidingWindowRButton;
+//    private final JRadioButton tumblingWindowRButton;
+//
+//    private final JRadioButton slidingWindowRButton;
 
     private final JRadioButton forwardRButton;
 
@@ -103,33 +103,22 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
 
     private final JLabel windowSizeLabel;
 
-    private final JTextField timeField;
+    private final JLabel windowTimeLabel;
+
+    private final JLabel startTimeLabel;
+
+    private final JTextField timeWindow;
+
+    private final JTextField startTime;
 
     private final DialogComponentColumnNameSelection columnSelector;
+
 
     /**
      *
      */
     public LoopStartWindowNodeDialogPane() {
         ButtonGroup bg = new ButtonGroup();
-        tumblingWindowRButton = new JRadioButton("Tumbling");
-        slidingWindowRButton = new JRadioButton("Sliding");
-
-        ActionListener al = new ActionListener() {
-            /** {@inheritDoc} */
-            @Override
-            public void actionPerformed(final ActionEvent e) {
-                stepSizeSpinner.setEnabled(slidingWindowRButton.isSelected());
-            }
-        };
-
-        tumblingWindowRButton.addActionListener(al);
-        slidingWindowRButton.addActionListener(al);
-
-        bg.add(tumblingWindowRButton);
-        bg.add(slidingWindowRButton);
-
-        bg = new ButtonGroup();
 
         forwardRButton = new JRadioButton("Forward");
         backwardRButton = new JRadioButton("Backward");
@@ -148,10 +137,15 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
 
         windowSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 5));
         stepSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 10));
-        timeField = new JTextField("Time-Duration");
+
+        timeWindow = new JTextField("Time-Duration");
+        startTime = new JTextField("start");
 
         stepSizeLabel = new JLabel("Step size");
         windowSizeLabel = new JLabel("Window size");
+
+        windowTimeLabel = new JLabel("Window time");
+        startTimeLabel = new JLabel("Starting interval");
 
         columnSelector = new DialogComponentColumnNameSelection(createColumnModel(), "time column", 0, false,
             DurationValue.class, PeriodValue.class);
@@ -160,19 +154,24 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
 
             @Override
             public void actionPerformed(final ActionEvent e) {
-                tumblingWindowRButton.setEnabled(eventTrigRButton.isSelected());
-                slidingWindowRButton.setEnabled(eventTrigRButton.isSelected());
-                timeField.setEnabled(!eventTrigRButton.isSelected());
+                /* Time triggered */
+                timeWindow.setEnabled(!eventTrigRButton.isSelected());
                 columnSelector.getModel().setEnabled(!eventTrigRButton.isSelected());
+                startTime.setEnabled(!eventTrigRButton.isSelected());
+
+                /* Event triggered */
                 windowSizeSpinner.setEnabled(eventTrigRButton.isSelected());
-                stepSizeSpinner.setEnabled(eventTrigRButton.isSelected() && slidingWindowRButton.isSelected());
+                stepSizeSpinner.setEnabled(eventTrigRButton.isSelected());
+                forwardRButton.setEnabled(eventTrigRButton.isSelected());
+                backwardRButton.setEnabled(eventTrigRButton.isSelected());
+                centralRButton.setEnabled(eventTrigRButton.isSelected());
             }
         };
 
         eventTrigRButton.addActionListener(triggerListener);
         timeTrigRButton.addActionListener(triggerListener);
 
-        slidingWindowRButton.doClick();
+//        slidingWindowRButton.doClick();
         forwardRButton.doClick();
         eventTrigRButton.doClick();
 
@@ -183,15 +182,11 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
      *
      */
     private void initLayout() {
-        GridBagLayout gbl = new GridBagLayout();
-        JPanel panel = new JPanel(gbl);
+        JPanel panel = new JPanel(new GridBagLayout());
 
         GridBagConstraints constraint = new GridBagConstraints();
 
         constraint.anchor = GridBagConstraints.LINE_START;
-        constraint.ipadx = 2;
-        constraint.ipady = 5;
-        constraint.insets = new Insets(2, 2, 2, 2);
         constraint.gridx = 1;
         constraint.gridy = 1;
 
@@ -200,42 +195,69 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         constraint.gridx++;
         panel.add(timeTrigRButton, constraint);
 
-        constraint.gridx = 1;
+        /* Event sub-panel */
+        JPanel eventPanel = new JPanel(new GridBagLayout());
+        GridBagConstraints subConstraint = new GridBagConstraints();
+
+        subConstraint.ipadx = 2;
+        subConstraint.ipady = 5;
+        subConstraint.insets = new Insets(2, 2, 2, 2);
+        subConstraint.gridx = 1;
+        subConstraint.gridy = 1;
+
+        eventPanel.add(windowSizeLabel, subConstraint);
+
+        subConstraint.gridx++;
+        eventPanel.add(windowSizeSpinner, subConstraint);
+
+        subConstraint.gridx--;
+        subConstraint.gridy++;
+        eventPanel.add(stepSizeLabel, subConstraint);
+
+        subConstraint.gridx++;
+        eventPanel.add(stepSizeSpinner, subConstraint);
+
+        subConstraint.gridx--;
+        subConstraint.gridy++;
+        eventPanel.add(forwardRButton, subConstraint);
+
+        subConstraint.gridx++;
+        eventPanel.add(centralRButton, subConstraint);
+
+        subConstraint.gridx++;
+        eventPanel.add(backwardRButton, subConstraint);
+
+        eventPanel.setBorder(BorderFactory.createTitledBorder("Event Triggered"));
+
+        constraint.gridx--;
         constraint.gridy++;
-        panel.add(slidingWindowRButton, constraint);
+        panel.add(eventPanel, constraint);
 
-        constraint.gridx++;
-        panel.add(tumblingWindowRButton, constraint);
+        /* Time sub-panel */
+        JPanel timePanel = new JPanel(new GridBagLayout());
 
-        constraint.gridx = 1;
+        subConstraint.gridx = 1;
+        subConstraint.gridy = 1;
+
+        timePanel.add(columnSelector.getComponentPanel(), subConstraint);
+
+        subConstraint.gridy++;
+        timePanel.add(windowTimeLabel, subConstraint);
+
+        subConstraint.gridx++;
+        timePanel.add(timeWindow,subConstraint);
+
+        subConstraint.gridx--;
+        subConstraint.gridy++;
+        timePanel.add(startTimeLabel, subConstraint);
+
+        subConstraint.gridx++;
+        timePanel.add(startTime, subConstraint);
+
+        timePanel.setBorder(BorderFactory.createTitledBorder("Time triggered"));
+
         constraint.gridy++;
-        panel.add(windowSizeLabel, constraint);
-
-        constraint.gridx++;
-        panel.add(windowSizeSpinner, constraint);
-
-        constraint.gridx++;
-        panel.add(columnSelector.getComponentPanel(), constraint);
-
-        constraint.gridy++;
-        panel.add(timeField, constraint);
-
-        constraint.gridx = 1;
-        constraint.gridy++;
-        panel.add(stepSizeLabel, constraint);
-
-        constraint.gridx++;
-        panel.add(stepSizeSpinner, constraint);
-
-        constraint.gridx = 1;
-        constraint.gridy++;
-        panel.add(forwardRButton, constraint);
-
-        constraint.gridx++;
-        panel.add(centralRButton, constraint);
-
-        constraint.gridx++;
-        panel.add(backwardRButton, constraint);
+        panel.add(timePanel, constraint);
 
         addTab("Configuration", panel);
     }
@@ -250,13 +272,13 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         windowSizeSpinner.setValue(config.getWindowSize());
         stepSizeSpinner.setValue(config.getStepSize());
 
-        switch (config.getWindowMode()) {
-            case TUMBLING:
-                tumblingWindowRButton.doClick();
-                break;
-            default:
-                slidingWindowRButton.doClick();
-        }
+//        switch (config.getWindowMode()) {
+//            case TUMBLING:
+//                tumblingWindowRButton.doClick();
+//                break;
+//            default:
+//                slidingWindowRButton.doClick();
+//        }
 
         switch (config.getWindowDefinition()) {
             case FORWARD:
@@ -287,11 +309,6 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         config.setWindowSize((Integer)windowSizeSpinner.getValue());
         config.setStepSize((Integer)stepSizeSpinner.getValue());
 
-        if (tumblingWindowRButton.isSelected()) {
-            config.setWindowMode(WindowMode.TUMBLING);
-        } else {
-            config.setWindowMode(WindowMode.SLIDING);
-        }
 
         if (forwardRButton.isSelected()) {
             config.setWindowDefinition(WindowDefinition.FORWARD);

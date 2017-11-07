@@ -53,6 +53,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
 
+import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.Trigger;
 import org.knime.core.data.DataCell;
 import org.knime.core.data.DataRow;
 import org.knime.core.data.DataTableSpec;
@@ -81,18 +82,19 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     private LoopStartWindowConfiguration m_config;
 
     // loop invariants
-//    private BufferedDataTable m_table;
+    //    private BufferedDataTable m_table;
 
     private CloseableRowIterator m_iterator;
 
     // loop variants
-//    private int m_iteration;
+    //    private int m_iteration;
 
     // number of columns
     private int nColumns;
 
     // index of current row
     private long currRow;
+
     private long rowCount;
 
     // true if bufferRows has been filled once
@@ -117,9 +119,9 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
             m_config = new LoopStartWindowConfiguration();
             setWarningMessage("Using default: " + m_config);
         }
-//        assert m_iteration == 0;
-//        pushFlowVariableInt("currentIteration", m_iteration);
-//        pushFlowVariableInt("maxIterations", 0);
+        //        assert m_iteration == 0;
+        //        pushFlowVariableInt("currentIteration", m_iteration);
+        //        pushFlowVariableInt("maxIterations", 0);
         return inSpecs;
     }
 
@@ -139,18 +141,22 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
             nColumns = table.getSpec().getNumColumns();
         }
 
-        switch (m_config.getWindowDefinition()) {
-            case BACKWARD:
-                return executeBackward(table, exec);
+        if (m_config.getTrigger().equals(Trigger.EVENT)) {
+            switch (m_config.getWindowDefinition()) {
+                case BACKWARD:
+                    return executeBackward(table, exec);
 
-            case CENTRAL:
-                return executeCentral(table, exec);
+                case CENTRAL:
+                    return executeCentral(table, exec);
 
-            case FORWARD:
-                return executeForward(table, exec);
+                case FORWARD:
+                    return executeForward(table, exec);
 
-            default:
-                return null;
+                default:
+                    return null;
+            }
+        } else {
+            return null;
         }
     }
 
@@ -162,7 +168,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
      * @return BufferedDataTable containing the current loop.
      */
     private BufferedDataTable[] executeBackward(final BufferedDataTable table, final ExecutionContext exec) {
-        int windowSize = (int)Math.min(m_config.getWindowSize(), rowCount);
+        int windowSize = m_config.getWindowSize();
         int stepSize = m_config.getStepSize();
         int currRowCount = 0;
 
@@ -179,9 +185,12 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
             }
         }
 
+        /* TODO: backwards wrong: e.g. window:2 step:2*/
+
         /* Add missing preceding rows to fill up the window. */
         while (container.size() < windowSize - 1 - bufferedRows.size()) {
             container.addRowToTable(new MissingRow(nColumns));
+            currRowCount++;
         }
 
         /* Add buffered rows that overlap. */
@@ -221,7 +230,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
      * @return BufferedDataTable containing the current loop.
      */
     private BufferedDataTable[] executeCentral(final BufferedDataTable table, final ExecutionContext exec) {
-        int windowSize = (int)Math.min(m_config.getWindowSize(), rowCount);
+        int windowSize = m_config.getWindowSize();
         int stepSize = m_config.getStepSize();
         int currRowCount = 0;
 
@@ -290,21 +299,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
      * @return BufferedDataTable containing the current loop.
      */
     private BufferedDataTable[] executeForward(final BufferedDataTable table, final ExecutionContext exec) {
-        int windowSize = (int)Math.min(m_config.getWindowSize(), rowCount);
-
-        /** TODO: Tumbling */
-        //        if (m_config.getMode() == Mode.TUMBLING) {
-        //            BufferedDataContainer container = exec.createDataContainer(table.getSpec());
-        //
-        //            for (int i = 0; i < windowSize && m_iterator.hasNext(); i++) {
-        //                container.addRowToTable(m_iterator.next());
-        //            }
-        //
-        //            container.close();
-        //
-        //            return new BufferedDataTable[]{container.getTable()};
-        //        }
-
+        int windowSize = m_config.getWindowSize();
         int stepSize = m_config.getStepSize();
         int currRowCount = 0;
 
@@ -344,7 +339,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         }
 
         /* Add missing rows to fill up the window. */
-        while (currRowCount < windowSize) {
+        while (container.size() < windowSize) {
             container.addRowToTable(new MissingRow(nColumns));
         }
 
@@ -362,18 +357,18 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     protected void reset() {
         removeBufferedRows = false;
         currRow = 0;
-//        m_iteration = 0;
+        //        m_iteration = 0;
         if (m_iterator != null) {
             m_iterator.close();
         }
         m_iterator = null;
-//        m_table = null;
+        //        m_table = null;
     }
 
     /** {@inheritDoc} */
     @Override
     public boolean terminateLoop() {
-       return currRow >= rowCount;
+        return currRow >= rowCount;
     }
 
     /**
@@ -431,6 +426,10 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     static class MissingRow implements DataRow {
         private DataCell[] m_cells;
 
+        private static int rowCounter = 1;
+
+        private static String rowName = "LSW_Missing_Row";
+
         /**
          * @param numCells The number of cells in the {@link DataRow}
          */
@@ -446,7 +445,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
          */
         @Override
         public RowKey getKey() {
-            return null;
+            return new RowKey(rowName+(rowCounter++));
         }
 
         /**
