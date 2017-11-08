@@ -82,12 +82,12 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     private LoopStartWindowConfiguration m_config;
 
     // loop invariants
-    //    private BufferedDataTable m_table;
+    // private BufferedDataTable m_table;
 
     private CloseableRowIterator m_iterator;
 
     // loop variants
-    //    private int m_iteration;
+    // private int m_iteration;
 
     // number of columns
     private int nColumns;
@@ -96,9 +96,6 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     private long currRow;
 
     private long rowCount;
-
-    // true if bufferRows has been filled once
-    private boolean removeBufferedRows = false;
 
     // buffered rows used for overlapping
     private LinkedList<DataRow> bufferedRows;
@@ -185,10 +182,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
             }
         }
 
-        /* TODO: backwards wrong: e.g. window:2 step:2*/
-
-        /* Add missing preceding rows to fill up the window. */
-        while (container.size() < windowSize - 1 - bufferedRows.size()) {
+        /* Add missing preceding rows to fill up the window at the beginning of the loop. */
+        while (container.size() < windowSize - (currRow + 1)) {
             container.addRowToTable(new MissingRow(nColumns));
             currRowCount++;
         }
@@ -234,17 +229,13 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         int stepSize = m_config.getStepSize();
         int currRowCount = 0;
 
-        /* Ensures that the buffer has been filled at least once, i.e., no rows are removed when we have to fill up with empty rows at the beginning of the loop. */
-        removeBufferedRows = removeBufferedRows || bufferedRows.size() == windowSize - stepSize;
-
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
         Iterator<DataRow> bufferedIterator = bufferedRows.iterator();
 
-        if (currRow < Math.floorDiv(windowSize, 2)) {
-            /* Fill missing preceding rows with missing values. Only needed at the start of*/
-            while (container.size() < Math.floorDiv(windowSize, 2) - bufferedRows.size()) {
-                container.addRowToTable(new MissingRow(nColumns));
-            }
+        /* Fill missing preceding rows with missing values. Only needed at the start of*/
+        while (container.size() < Math.floorDiv(windowSize, 2) - (currRow)) {
+            container.addRowToTable(new MissingRow(nColumns));
+            currRowCount++;
         }
 
         /* Jump to next following row if step size is greater than the window size.*/
@@ -261,7 +252,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         while (bufferedIterator.hasNext()) {
             container.addRowToTable(bufferedIterator.next());
 
-            if (currRowCount < stepSize && removeBufferedRows) {
+            if (currRowCount < stepSize) {
                 bufferedIterator.remove();
             }
 
@@ -272,7 +263,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         for (; container.size() < windowSize && m_iterator.hasNext(); currRowCount++) {
             DataRow dRow = m_iterator.next();
 
-            if (currRowCount >= stepSize - Math.floorDiv(windowSize, 2)) {
+            if (currRowCount >= stepSize) {
                 bufferedRows.add(dRow);
             }
 
@@ -355,8 +346,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
      */
     @Override
     protected void reset() {
-        removeBufferedRows = false;
         currRow = 0;
+        MissingRow.rowCounter = 0;
         //        m_iteration = 0;
         if (m_iterator != null) {
             m_iterator.close();
@@ -426,7 +417,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     static class MissingRow implements DataRow {
         private DataCell[] m_cells;
 
-        private static int rowCounter = 1;
+        private static int rowCounter = 0;
 
         private static String rowName = "LSW_Missing_Row";
 
@@ -445,7 +436,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
          */
         @Override
         public RowKey getKey() {
-            return new RowKey(rowName+(rowCounter++));
+            return new RowKey(rowName + (rowCounter++));
         }
 
         /**
