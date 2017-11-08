@@ -47,9 +47,13 @@
  */
 package org.knime.base.node.meta.looper.window;
 
+import java.time.Duration;
+import java.time.format.DateTimeParseException;
+
 import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.NodeSettingsRO;
 import org.knime.core.node.NodeSettingsWO;
+import org.knime.time.util.DurationPeriodFormatUtils;
 
 /**
  * Configuration object to loop start chunking node.
@@ -83,6 +87,9 @@ final class LoopStartWindowConfiguration {
 
     private int windowSize = 1;
 
+    private Duration startDuration;
+
+    private Duration windowDuration;
 
     /** @return the window definition */
     WindowDefinition getWindowDefinition() {
@@ -162,6 +169,13 @@ final class LoopStartWindowConfiguration {
         settings.addInt("windowSize", windowSize);
         settings.addString("trigger", trigger.name());
         settings.addString("windowDefinition", windowDefinition.name());
+        settings.addString("startDuration", null);
+        settings.addString("windowDuration", null);
+
+        if (startDuration != null) {
+            settings.addString("startDuration", DurationPeriodFormatUtils.formatDurationLong(startDuration));
+            settings.addString("windowDuration", DurationPeriodFormatUtils.formatDurationLong(windowDuration));
+        }
     }
 
     /**
@@ -171,16 +185,16 @@ final class LoopStartWindowConfiguration {
      * @throws InvalidSettingsException If invalid.
      */
     void loadSettingsInModel(final NodeSettingsRO settings) throws InvalidSettingsException {
-        String defS = settings.getString("windowDefinition");
+        String defWindowS = settings.getString("windowDefinition");
 
-        if (defS == null) {
-            defS = WindowDefinition.FORWARD.name();
+        if (defWindowS == null) {
+            defWindowS = WindowDefinition.FORWARD.name();
         }
 
         try {
-            setWindowDefinition(WindowDefinition.valueOf(defS));
+            setWindowDefinition(WindowDefinition.valueOf(defWindowS));
         } catch (IllegalArgumentException iae) {
-            throw new InvalidSettingsException("Invalid window definition: " + defS);
+            throw new InvalidSettingsException("Invalid window definition: " + defWindowS);
         }
 
         String triggerS = settings.getString("trigger");
@@ -197,6 +211,22 @@ final class LoopStartWindowConfiguration {
 
         setStepSize(settings.getInt("stepSize"));
         setWindowSize(settings.getInt("windowSize"));
+
+        try {
+            if (settings.getString("startDuration") != null) {
+                startDuration = DurationPeriodFormatUtils.parseDuration(settings.getString("startDuration"));
+            }
+        } catch (DateTimeParseException e) {
+            startDuration = null;
+        }
+
+        try {
+            if (settings.getString("windowDuration") != null) {
+                windowDuration = DurationPeriodFormatUtils.parseDuration(settings.getString("windowDuration"));
+            }
+        } catch (DateTimeParseException e) {
+            windowDuration = null;
+        }
     }
 
     /**
@@ -235,6 +265,28 @@ final class LoopStartWindowConfiguration {
     @Override
     public String toString() {
         return "";
+    }
+
+    /**
+     * @param start
+     */
+    void setStartDuration(final Duration start) {
+        startDuration = start;
+    }
+
+    Duration getStartDuration() {
+        return startDuration;
+    }
+
+    /**
+     * @param dur
+     */
+    void setWindowDuration(final Duration dur) {
+        windowDuration = dur;
+    }
+
+    Duration getWindowDuration() {
+        return windowDuration;
     }
 
 }

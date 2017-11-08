@@ -52,6 +52,8 @@ import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.time.Duration;
+import java.time.format.DateTimeParseException;
 
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
@@ -66,7 +68,9 @@ import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.Trigg
 import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.WindowDefinition;
 import org.knime.core.data.DataTableSpec;
 import org.knime.core.data.time.duration.DurationValue;
-import org.knime.core.data.time.period.PeriodValue;
+import org.knime.core.data.time.localdate.LocalDateValue;
+import org.knime.core.data.time.localdatetime.LocalDateTimeValue;
+import org.knime.core.data.time.localtime.LocalTimeValue;
 import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.NodeDialogPane;
 import org.knime.core.node.NodeSettingsRO;
@@ -74,16 +78,14 @@ import org.knime.core.node.NodeSettingsWO;
 import org.knime.core.node.NotConfigurableException;
 import org.knime.core.node.defaultnodesettings.DialogComponentColumnNameSelection;
 import org.knime.core.node.defaultnodesettings.SettingsModelString;
+import org.knime.time.util.DurationPeriodFormatUtils;
 
 /**
+ * Dialog pane for the Window Loop Start node.
  *
  * @author Moritz Heine, KNIME.com, Konstanz, Germany
  */
 public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
-
-//    private final JRadioButton tumblingWindowRButton;
-//
-//    private final JRadioButton slidingWindowRButton;
 
     private final JRadioButton forwardRButton;
 
@@ -112,7 +114,6 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
     private final JTextField startTime;
 
     private final DialogComponentColumnNameSelection columnSelector;
-
 
     /**
      *
@@ -148,7 +149,7 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         startTimeLabel = new JLabel("Starting interval");
 
         columnSelector = new DialogComponentColumnNameSelection(createColumnModel(), "time column", 0, false,
-            DurationValue.class, PeriodValue.class);
+            DurationValue.class, LocalTimeValue.class, LocalDateTimeValue.class, LocalDateValue.class);
 
         ActionListener triggerListener = new ActionListener() {
 
@@ -171,7 +172,6 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         eventTrigRButton.addActionListener(triggerListener);
         timeTrigRButton.addActionListener(triggerListener);
 
-//        slidingWindowRButton.doClick();
         forwardRButton.doClick();
         eventTrigRButton.doClick();
 
@@ -245,7 +245,7 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         timePanel.add(windowTimeLabel, subConstraint);
 
         subConstraint.gridx++;
-        timePanel.add(timeWindow,subConstraint);
+        timePanel.add(timeWindow, subConstraint);
 
         subConstraint.gridx--;
         subConstraint.gridy++;
@@ -271,14 +271,6 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
 
         windowSizeSpinner.setValue(config.getWindowSize());
         stepSizeSpinner.setValue(config.getStepSize());
-
-//        switch (config.getWindowMode()) {
-//            case TUMBLING:
-//                tumblingWindowRButton.doClick();
-//                break;
-//            default:
-//                slidingWindowRButton.doClick();
-//        }
 
         switch (config.getWindowDefinition()) {
             case FORWARD:
@@ -309,7 +301,6 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         config.setWindowSize((Integer)windowSizeSpinner.getValue());
         config.setStepSize((Integer)stepSizeSpinner.getValue());
 
-
         if (forwardRButton.isSelected()) {
             config.setWindowDefinition(WindowDefinition.FORWARD);
         } else if (backwardRButton.isSelected()) {
@@ -322,6 +313,25 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
             config.setTrigger(Trigger.EVENT);
         } else {
             config.setTrigger(Trigger.TIME);
+
+            if (columnSelector == null || columnSelector.getSelectedAsSpec() == null) {
+                throw new InvalidSettingsException("No valid column has been chosen");
+            }
+
+            try {
+                Duration startDur = DurationPeriodFormatUtils.parseDuration(startTime.getText());
+                config.setStartDuration(startDur);
+            } catch (DateTimeParseException e) {
+                throw new InvalidSettingsException("No valid start duration: " + startTime.getText());
+            }
+
+            try {
+                Duration windowDur = DurationPeriodFormatUtils.parseDuration(startTime.getText());
+                config.setWindowDuration(windowDur);
+            } catch (DateTimeParseException e) {
+                throw new InvalidSettingsException("No valid window duration: " + startTime.getText());
+            }
+
         }
 
         config.saveSettingsTo(settings);

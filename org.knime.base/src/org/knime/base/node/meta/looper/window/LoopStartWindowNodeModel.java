@@ -49,6 +49,11 @@ package org.knime.base.node.meta.looper.window;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.temporal.Temporal;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -60,6 +65,10 @@ import org.knime.core.data.DataTableSpec;
 import org.knime.core.data.DataType;
 import org.knime.core.data.RowKey;
 import org.knime.core.data.container.CloseableRowIterator;
+import org.knime.core.data.time.duration.DurationCell;
+import org.knime.core.data.time.localdate.LocalDateCell;
+import org.knime.core.data.time.localdatetime.LocalDateTimeCell;
+import org.knime.core.data.time.localtime.LocalTimeCell;
 import org.knime.core.node.BufferedDataContainer;
 import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.CanceledExecutionException;
@@ -69,6 +78,7 @@ import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.NodeModel;
 import org.knime.core.node.NodeSettingsRO;
 import org.knime.core.node.NodeSettingsWO;
+import org.knime.core.node.defaultnodesettings.SettingsModelString;
 import org.knime.core.node.workflow.LoopStartNodeTerminator;
 
 /**
@@ -79,7 +89,7 @@ import org.knime.core.node.workflow.LoopStartNodeTerminator;
  */
 public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeTerminator {
 
-    private LoopStartWindowConfiguration m_config;
+    private LoopStartWindowConfiguration windowConfig;
 
     // loop invariants
     // private BufferedDataTable m_table;
@@ -100,6 +110,18 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     // buffered rows used for overlapping
     private LinkedList<DataRow> bufferedRows;
 
+    private String timeColumnName;
+
+    private Duration nextStartDuration;
+
+    private Temporal nextStartTemporal;
+
+    // Used to check if table is sorted
+    private Duration prevDuration;
+
+    // Used to check if table is sorted
+    private Temporal prevTemporal;
+
     /**
      * Creates a new model.
      */
@@ -112,9 +134,9 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
      */
     @Override
     protected DataTableSpec[] configure(final DataTableSpec[] inSpecs) throws InvalidSettingsException {
-        if (m_config == null) {
-            m_config = new LoopStartWindowConfiguration();
-            setWarningMessage("Using default: " + m_config);
+        if (windowConfig == null) {
+            windowConfig = new LoopStartWindowConfiguration();
+            setWarningMessage("Using default: " + windowConfig);
         }
         //        assert m_iteration == 0;
         //        pushFlowVariableInt("currentIteration", m_iteration);
@@ -138,8 +160,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
             nColumns = table.getSpec().getNumColumns();
         }
 
-        if (m_config.getTrigger().equals(Trigger.EVENT)) {
-            switch (m_config.getWindowDefinition()) {
+        if (windowConfig.getTrigger().equals(Trigger.EVENT)) {
+            switch (windowConfig.getWindowDefinition()) {
                 case BACKWARD:
                     return executeBackward(table, exec);
 
@@ -152,9 +174,217 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
                 default:
                     return null;
             }
-        } else {
-            return null;
         }
+
+        int column = table.getDataTableSpec().findColumnIndex(timeColumnName);
+        boolean duration =
+            table.getDataTableSpec().getColumnSpec(column).getType().equals(DataType.getType(DurationCell.class));
+
+        if (duration) {
+            return executeDuration(table, exec);
+        }
+
+        return executeTemporal(table, exec);
+
+    }
+
+    /**
+     * @param table
+     * @param exec
+     * @return
+     */
+    private BufferedDataTable[] executeTemporal(final BufferedDataTable table, final ExecutionContext exec) {
+        int column = table.getDataTableSpec().findColumnIndex(timeColumnName);
+
+        /* TODO: exclude missing!*/
+
+        Duration startInterval = windowConfig.getStartDuration();
+        Duration windowDuration = windowConfig.getWindowDuration();
+        Temporal endTemporal = null;
+
+        /* Compute end duration of window and beginning of next duration*/
+        if (nextStartTemporal == null && m_iterator.hasNext()) {
+            DataRow first = m_iterator.next();
+
+            Temporal firstStart = getTemporal(first.getCell(column));
+
+            prevTemporal = firstStart;
+
+            nextStartTemporal = firstStart.plus(startInterval);
+            endTemporal = firstStart.plus(windowDuration);
+
+            bufferedRows.add(first);
+        } else {
+            /* Move window by interval until it contains at least one row. */
+            if (bufferedRows.isEmpty() && m_iterator.hasNext()) {
+                bufferedRows.add(m_iterator.next());
+            }
+
+            Temporal nextTemporal = getTemporal(bufferedRows.getFirst().getCell(column));
+
+            /* TODO: Added this last. check. prev had problem => threw exception, possibly when we start overlapping/new window */
+            prevTemporal = nextTemporal;
+
+            do {
+                endTemporal = nextStartTemporal.plus(windowDuration);
+                nextStartTemporal = nextStartTemporal.plus(startInterval);
+            } while (compareTemporal(nextTemporal, endTemporal) >= 0);
+        }
+
+        BufferedDataContainer container = exec.createDataContainer(table.getSpec());
+        Iterator<DataRow> bufferedIterator = bufferedRows.iterator();
+
+        /* Add buffered rows. */
+        while (bufferedIterator.hasNext()) {
+            DataRow row = bufferedIterator.next();
+            container.addRowToTable(row);
+
+            if (compareTemporal(getTemporal(row.getCell(column)), nextStartTemporal) < 0) {
+                bufferedIterator.remove();
+            }
+        }
+
+        /* Add newly read rows. */
+        while (m_iterator.hasNext()) {
+            DataRow row = m_iterator.next();
+
+            Temporal currTemporal = getTemporal(row.getCell(column));
+
+            /* Check if table is sorted according to temporal column. */
+            if (compareTemporal(currTemporal, prevTemporal) < 0) {
+                throw new IllegalStateException("Table not in ascending order concerning chosen temporal column.");
+            }
+
+            prevTemporal = currTemporal;
+
+            /* Add overlapping rows to the buffer. */
+            if (compareTemporal(currTemporal, nextStartTemporal) >= 0) {
+                bufferedRows.add(row);
+            }
+
+            /* Add row to current output. */
+            if (compareTemporal(currTemporal, endTemporal) < 0) {
+                container.addRowToTable(row);
+            }
+        }
+
+        container.close();
+
+        return new BufferedDataTable[]{container.getTable()};
+    }
+
+    /**
+     * @param nextRow
+     * @param endTemporal
+     * @return
+     */
+    private int compareTemporal(final Temporal t1, final Temporal t2) {
+        if (t1 instanceof LocalTime) {
+            return ((LocalTime)t1).compareTo((LocalTime)t2);
+        } else if (t1 instanceof LocalDateTime) {
+            return ((LocalDateTime)t1).compareTo((LocalDateTime)t2);
+        } else if (t1 instanceof LocalDate) {
+            return ((LocalDate)t1).compareTo((LocalDate)t2);
+        }
+
+        throw new IllegalArgumentException("Data must be of type LocalDate, LocalDateTime, or LocalTime");
+    }
+
+    /**
+     * @param table
+     * @param exec
+     * @return
+     */
+    private BufferedDataTable[] executeDuration(final BufferedDataTable table, final ExecutionContext exec) {
+        int column = table.getDataTableSpec().findColumnIndex(timeColumnName);
+
+        Duration startInterval = windowConfig.getStartDuration();
+        Duration windowDuration = windowConfig.getWindowDuration();
+        Duration endDuration = null;
+
+        /* Compute end duration of window and beginning of next duration*/
+        if (nextStartDuration == null && m_iterator.hasNext()) {
+            DataRow first = m_iterator.next();
+
+            Duration firstStart = ((DurationCell)first.getCell(column)).getDuration();
+            prevDuration = firstStart;
+
+            nextStartDuration = firstStart.plus(startInterval);
+            endDuration = firstStart.plus(windowDuration);
+
+            bufferedRows.add(first);
+        } else {
+            /* Move window by interval until it contains at least one row. */
+            if (bufferedRows.isEmpty() && m_iterator.hasNext()) {
+                bufferedRows.add(m_iterator.next());
+            }
+
+            Duration nextRow = ((DurationCell)bufferedRows.getFirst().getCell(column)).getDuration();
+
+            prevDuration = nextRow;
+
+            do {
+                endDuration = nextStartDuration.plus(windowDuration);
+                nextStartDuration = nextStartDuration.plus(startInterval);
+            } while (nextRow.compareTo(endDuration) >= 0);
+        }
+
+        BufferedDataContainer container = exec.createDataContainer(table.getSpec());
+        Iterator<DataRow> bufferedIterator = bufferedRows.iterator();
+
+        /* Add buffered rows. */
+        while (bufferedIterator.hasNext()) {
+            DataRow row = bufferedIterator.next();
+            container.addRowToTable(row);
+
+            if (((DurationCell)row.getCell(column)).getDuration().compareTo(nextStartDuration) < 0) {
+                bufferedIterator.remove();
+            }
+        }
+
+        /* Add newly read rows. */
+        while (m_iterator.hasNext()) {
+            DataRow row = m_iterator.next();
+
+            Duration currDuration = ((DurationCell)row.getCell(column)).getDuration();
+
+            /* Check if table is sorted according to temporal column. */
+            if (currDuration.compareTo(prevDuration) < 0) {
+                throw new IllegalStateException("Table not in ascending order concerning chosen temporal column.");
+            }
+
+            prevDuration = currDuration;
+
+            /* Add overlapping rows to the buffer. */
+            if (currDuration.compareTo(nextStartDuration) >= 0) {
+                bufferedRows.add(row);
+            }
+
+            /* Add row to current output. */
+            if (currDuration.compareTo(endDuration) < 0) {
+                container.addRowToTable(row);
+            }
+        }
+
+        container.close();
+
+        return new BufferedDataTable[]{container.getTable()};
+    }
+
+    /**
+     * @param cell
+     * @return
+     */
+    private Temporal getTemporal(final DataCell cell) {
+        if (cell instanceof LocalTimeCell) {
+            return ((LocalTimeCell)cell).getLocalTime();
+        } else if (cell instanceof LocalDateCell) {
+            return ((LocalDateCell)cell).getLocalDate();
+        } else if (cell instanceof LocalDateTimeCell) {
+            return ((LocalDateTimeCell)cell).getLocalDateTime();
+        }
+
+        return null;
     }
 
     /**
@@ -165,8 +395,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
      * @return BufferedDataTable containing the current loop.
      */
     private BufferedDataTable[] executeBackward(final BufferedDataTable table, final ExecutionContext exec) {
-        int windowSize = m_config.getWindowSize();
-        int stepSize = m_config.getStepSize();
+        int windowSize = windowConfig.getWindowSize();
+        int stepSize = windowConfig.getStepSize();
         int currRowCount = 0;
 
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
@@ -225,8 +455,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
      * @return BufferedDataTable containing the current loop.
      */
     private BufferedDataTable[] executeCentral(final BufferedDataTable table, final ExecutionContext exec) {
-        int windowSize = m_config.getWindowSize();
-        int stepSize = m_config.getStepSize();
+        int windowSize = windowConfig.getWindowSize();
+        int stepSize = windowConfig.getStepSize();
         int currRowCount = 0;
 
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
@@ -290,8 +520,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
      * @return BufferedDataTable containing the current loop.
      */
     private BufferedDataTable[] executeForward(final BufferedDataTable table, final ExecutionContext exec) {
-        int windowSize = m_config.getWindowSize();
-        int stepSize = m_config.getStepSize();
+        int windowSize = windowConfig.getWindowSize();
+        int stepSize = windowConfig.getStepSize();
         int currRowCount = 0;
 
         /* Jump to next following row if step size is greater than the window size.*/
@@ -354,12 +584,18 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         }
         m_iterator = null;
         //        m_table = null;
+        nextStartDuration = null;
+        nextStartTemporal = null;
     }
 
     /** {@inheritDoc} */
     @Override
     public boolean terminateLoop() {
-        return currRow >= rowCount;
+        if (windowConfig.getTrigger().equals(Trigger.EVENT)) {
+            return currRow >= rowCount;
+        }
+
+        return !m_iterator.hasNext() && (bufferedRows == null || bufferedRows.isEmpty());
     }
 
     /**
@@ -367,8 +603,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
      */
     @Override
     protected void saveSettingsTo(final NodeSettingsWO settings) {
-        if (m_config != null) {
-            m_config.saveSettingsTo(settings);
+        if (windowConfig != null) {
+            windowConfig.saveSettingsTo(settings);
         }
     }
 
@@ -387,7 +623,11 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     protected void loadValidatedSettingsFrom(final NodeSettingsRO settings) throws InvalidSettingsException {
         LoopStartWindowConfiguration config = new LoopStartWindowConfiguration();
         config.loadSettingsInModel(settings);
-        m_config = config;
+        windowConfig = config;
+
+        SettingsModelString settingsModel = LoopStartWindowNodeDialogPane.createColumnModel();
+        settingsModel.loadSettingsFrom(settings);
+        timeColumnName = settingsModel.getStringValue();
     }
 
     /**
