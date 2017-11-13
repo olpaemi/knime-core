@@ -47,6 +47,7 @@
  */
 package org.knime.base.node.meta.looper.window;
 
+import java.awt.Component;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
@@ -139,8 +140,8 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         windowSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 5));
         stepSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 10));
 
-        timeWindow = new JTextField("Time-Duration");
-        startTime = new JTextField("start");
+        timeWindow = new JTextField();
+        startTime = new JTextField();
 
         stepSizeLabel = new JLabel("Step size");
         windowSizeLabel = new JLabel("Window size");
@@ -189,19 +190,28 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         constraint.anchor = GridBagConstraints.LINE_START;
         constraint.gridx = 1;
         constraint.gridy = 1;
+        constraint.fill = GridBagConstraints.HORIZONTAL;
 
-        panel.add(eventTrigRButton, constraint);
+        /* Trigger sub-panel*/
+        JPanel triggerPanel = new JPanel(new GridBagLayout());
 
-        constraint.gridx++;
-        panel.add(timeTrigRButton, constraint);
-
-        /* Event sub-panel */
-        JPanel eventPanel = new JPanel(new GridBagLayout());
         GridBagConstraints subConstraint = new GridBagConstraints();
-
         subConstraint.ipadx = 2;
         subConstraint.ipady = 5;
         subConstraint.insets = new Insets(2, 2, 2, 2);
+        subConstraint.gridx = 1;
+        subConstraint.gridy = 1;
+
+        triggerPanel.add(eventTrigRButton, subConstraint);
+
+        subConstraint.gridx++;
+        triggerPanel.add(timeTrigRButton, subConstraint);
+
+        panel.add(triggerPanel, constraint);
+
+        /* Event sub-panel */
+        JPanel eventPanel = new JPanel(new GridBagLayout());
+
         subConstraint.gridx = 1;
         subConstraint.gridy = 1;
 
@@ -229,7 +239,6 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
 
         eventPanel.setBorder(BorderFactory.createTitledBorder("Event Triggered"));
 
-        constraint.gridx--;
         constraint.gridy++;
         panel.add(eventPanel, constraint);
 
@@ -239,19 +248,29 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         subConstraint.gridx = 1;
         subConstraint.gridy = 1;
 
-        timePanel.add(columnSelector.getComponentPanel(), subConstraint);
+        Component[] comp = columnSelector.getComponentPanel().getComponents();
+        timePanel.add(comp[0], subConstraint);
 
+        subConstraint.gridx++;
+        subConstraint.fill = GridBagConstraints.HORIZONTAL;
+        timePanel.add(comp[1], subConstraint);
+
+        subConstraint.gridx--;
         subConstraint.gridy++;
+        subConstraint.fill = GridBagConstraints.NONE;
         timePanel.add(windowTimeLabel, subConstraint);
 
         subConstraint.gridx++;
+        subConstraint.fill = GridBagConstraints.HORIZONTAL;
         timePanel.add(timeWindow, subConstraint);
 
         subConstraint.gridx--;
         subConstraint.gridy++;
+        subConstraint.fill = GridBagConstraints.NONE;
         timePanel.add(startTimeLabel, subConstraint);
 
         subConstraint.gridx++;
+        subConstraint.fill = GridBagConstraints.HORIZONTAL;
         timePanel.add(startTime, subConstraint);
 
         timePanel.setBorder(BorderFactory.createTitledBorder("Time triggered"));
@@ -289,6 +308,8 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
                 break;
             default:
                 timeTrigRButton.doClick();
+                startTime.setText(DurationPeriodFormatUtils.formatDurationShort(config.getStartDuration()));
+                timeWindow.setText(DurationPeriodFormatUtils.formatDurationShort(config.getWindowDuration()));
         }
 
         columnSelector.loadSettingsFrom(settings, specs);
@@ -297,6 +318,9 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
     /** {@inheritDoc} */
     @Override
     protected void saveSettingsTo(final NodeSettingsWO settings) throws InvalidSettingsException {
+        /* TODO: localtime: duration <24h */
+        /* TODO: duration > 0 */
+        /* TODO: localdate: duration >= 24h*/
         LoopStartWindowConfiguration config = new LoopStartWindowConfiguration();
         config.setWindowSize((Integer)windowSizeSpinner.getValue());
         config.setStepSize((Integer)stepSizeSpinner.getValue());
@@ -326,12 +350,11 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
             }
 
             try {
-                Duration windowDur = DurationPeriodFormatUtils.parseDuration(startTime.getText());
+                Duration windowDur = DurationPeriodFormatUtils.parseDuration(timeWindow.getText());
                 config.setWindowDuration(windowDur);
             } catch (DateTimeParseException e) {
-                throw new InvalidSettingsException("No valid window duration: " + startTime.getText());
+                throw new InvalidSettingsException("No valid window duration: " + timeWindow.getText());
             }
-
         }
 
         config.saveSettingsTo(settings);

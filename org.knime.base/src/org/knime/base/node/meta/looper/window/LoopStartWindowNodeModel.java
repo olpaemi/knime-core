@@ -122,6 +122,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     // Used to check if table is sorted
     private Temporal prevTemporal;
 
+    private boolean lastWindow;
+
     /**
      * Creates a new model.
      */
@@ -195,82 +197,217 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
      */
     private BufferedDataTable[] executeTemporal(final BufferedDataTable table, final ExecutionContext exec) {
         int column = table.getDataTableSpec().findColumnIndex(timeColumnName);
-
-        /* TODO: exclude missing!*/
-
         Duration startInterval = windowConfig.getStartDuration();
         Duration windowDuration = windowConfig.getWindowDuration();
-        Temporal endTemporal = null;
+        Temporal windowEnd = null;
+
+        // To check if an overflow occurred concerning the current window
+        boolean overflow = false;
+        // To check if an overflow occurred concerning next starting temporal.
+        lastWindow = false;
 
         /* Compute end duration of window and beginning of next duration*/
         if (nextStartTemporal == null && m_iterator.hasNext()) {
             DataRow first = m_iterator.next();
+
+            /* Check if column only consists of missing values. */
+            while(first.getCell(column).isMissing() && m_iterator.hasNext()) {
+                first = m_iterator.next();
+            }
+
+            if(first.getCell(column).isMissing()) {
+                throw new IllegalArgumentException("Chosen column only contains missing values.");
+            }
 
             Temporal firstStart = getTemporal(first.getCell(column));
 
             prevTemporal = firstStart;
 
             nextStartTemporal = firstStart.plus(startInterval);
-            endTemporal = firstStart.plus(windowDuration);
+
+            /* Check if the next starting temporal lies beyond the maximum temporal value. */
+            if (compareTemporal(nextStartTemporal, firstStart) <= 0) {
+                lastWindow = true;
+            }
+
+            /* Checks if window overflow occurs. */
+            Temporal temp = firstStart.plus(windowDuration);
+            if (compareTemporal(temp, firstStart) <= 0) {
+                overflow = true;
+            } else {
+                windowEnd = temp;
+            }
 
             bufferedRows.add(first);
         } else {
-            /* Move window by interval until it contains at least one row. */
-            if (bufferedRows.isEmpty() && m_iterator.hasNext()) {
-                bufferedRows.add(m_iterator.next());
-            }
-
             Temporal nextTemporal = getTemporal(bufferedRows.getFirst().getCell(column));
-
-            /* TODO: Added this last. check. prev had problem => threw exception, possibly when we start overlapping/new window */
             prevTemporal = nextTemporal;
 
-            do {
-                endTemporal = nextStartTemporal.plus(windowDuration);
-                nextStartTemporal = nextStartTemporal.plus(startInterval);
-            } while (compareTemporal(nextTemporal, endTemporal) >= 0);
+            /* Checks if temporal overflow occurs. */
+            Temporal temp = nextStartTemporal.plus(windowDuration);
+            if (compareTemporal(temp, nextStartTemporal.minus(startInterval)) <= 0) {
+                overflow = true;
+            } else {
+                windowEnd = temp;
+                temp = nextStartTemporal.plus(startInterval);
+                /* Check if the next starting temporal lies beyond the maximum temporal value. */
+                if (compareTemporal(temp, nextStartTemporal) <= 0) {
+                    lastWindow = true;
+                } else {
+                    nextStartTemporal = temp;
+                }
+            }
         }
 
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
         Iterator<DataRow> bufferedIterator = bufferedRows.iterator();
 
+        boolean allBufferedRowsInWindow = true;
+
         /* Add buffered rows. */
         while (bufferedIterator.hasNext()) {
             DataRow row = bufferedIterator.next();
-            container.addRowToTable(row);
 
-            if (compareTemporal(getTemporal(row.getCell(column)), nextStartTemporal) < 0) {
+            Temporal temp = getTemporal(row.getCell(column));
+
+            /* Checks if all buffered rows are in the specified window. */
+            if (!overflow && compareTemporal(temp, windowEnd) >= 0) {
+                allBufferedRowsInWindow = false;
+                break;
+            }
+
+            container.addRowToTable(row);
+            currRow++;
+
+            if (overflow || lastWindow || compareTemporal(getTemporal(row.getCell(column)), nextStartTemporal) < 0) {
                 bufferedIterator.remove();
             }
         }
 
         /* Add newly read rows. */
-        while (m_iterator.hasNext()) {
+        while (m_iterator.hasNext() && allBufferedRowsInWindow) {
             DataRow row = m_iterator.next();
+
+            if(row.getCell(column).isMissing()) {
+                continue;
+            }
 
             Temporal currTemporal = getTemporal(row.getCell(column));
 
-            /* Check if table is sorted according to temporal column. */
+            /* Check if table is sorted in non-descending order according to temporal column. */
             if (compareTemporal(currTemporal, prevTemporal) < 0) {
                 throw new IllegalStateException("Table not in ascending order concerning chosen temporal column.");
             }
 
             prevTemporal = currTemporal;
 
-            /* Add overlapping rows to the buffer. */
-            if (compareTemporal(currTemporal, nextStartTemporal) >= 0) {
+            /* Add rows for next window into the buffer. */
+            if (compareTemporal(currTemporal, nextStartTemporal) >= 0 && !overflow && !lastWindow) {
                 bufferedRows.add(row);
             }
 
             /* Add row to current output. */
-            if (compareTemporal(currTemporal, endTemporal) < 0) {
+            if (overflow || compareTemporal(currTemporal, windowEnd) < 0) {
                 container.addRowToTable(row);
+                currRow++;
+            } else {
+                break;
             }
         }
+
+        /* Find next entry that lies in a following window. */
+        DataRow row = null;
+        /* Close iterator if last window has been filled. */
+        if (lastWindow) {
+            m_iterator.close();
+        } else if (!allBufferedRowsInWindow) {
+            row = bufferedRows.remove();
+        } else if (bufferedRows.size() == 0 && m_iterator.hasNext()) {
+            row = m_iterator.next();
+
+            while(row.getCell(column).isMissing() && m_iterator.hasNext()) {
+                row = m_iterator.next();
+            }
+
+            if(row.getCell(column).isMissing()) {
+                row = null;
+            }
+        } else if (!overflow) {
+            /* Checks if the next buffered row lies within the given window */
+            if (compareTemporal(windowEnd.plus(startInterval), windowEnd) > 0) {
+                Temporal temp = getTemporal(bufferedRows.getFirst().getCell(column));
+
+                if (compareTemporal(temp, windowEnd.plus(startInterval)) >= 0) {
+                    row = bufferedRows.removeFirst();
+                }
+            }
+        }
+
+        skipTemporalWindows(row, column, startInterval, windowDuration);
 
         container.close();
 
         return new BufferedDataTable[]{container.getTable()};
+    }
+
+    /**
+     * @param row
+     */
+    private void skipTemporalWindows(DataRow row, final int column, final Duration startInterval,
+        final Duration windowDuration) {
+        while (row != null) {
+            /* Check if current row lies beyond next starting temporal. */
+            while (compareTemporal(getTemporal(row.getCell(column)), nextStartTemporal) < 0 && m_iterator.hasNext()) {
+                DataRow temp = m_iterator.next();
+
+                if(temp.getCell(column).isMissing()) {
+                    continue;
+                }
+
+                row = temp;
+            }
+
+            /* Checks if current row lies within next temporal window or if overflow of window occurs */
+            if (compareTemporal(getTemporal(row.getCell(column)), nextStartTemporal.plus(windowDuration)) < 0
+                || compareTemporal(nextStartTemporal.plus(windowDuration), nextStartTemporal) < 0) {
+                bufferedRows.addFirst(row);
+                break;
+            } else if (compareTemporal(getTemporal(row.getCell(column)), nextStartTemporal) < 0
+                && !m_iterator.hasNext()) {
+                /* There are no more rows that could lie within an upcoming window. */
+                break;
+            }
+
+            /* If next row lies beyond the defined next window move it until the rows lies within an upcoming window or the window passed said row. */
+            Temporal nextTemporalStart = nextStartTemporal.plus(startInterval);
+
+            /* Check for overflow of the next starting interval. */
+            if (compareTemporal(nextTemporalStart, nextStartTemporal) <= 0) {
+                m_iterator.close();
+                break;
+            } else {
+                nextStartTemporal = nextTemporalStart;
+                /* Get next row s.t. temporal of row is greater than next starting temporal. */
+//                while (compareTemporal(getTemporal(row.getCell(column)), nextTemporalStart) < 0
+//                 hos   && m_iterator.hasNext()) {
+//                    row = m_iterator.next();
+//                }
+//
+//                /* Check if the current found temporal of row is greater than next starting temporal. */
+//                if (compareTemporal(getTemporal(row.getCell(column)), nextTemporalStart) < 0) {
+//                    break;
+//                }
+//
+//                /* Check if current point lies within the given window. */
+//                Temporal nextEndTemporal = nextTemporalStart.plus(windowDuration);
+//                if (compareTemporal(getTemporal(row.getCell(column)), nextEndTemporal) < 0
+//                    || compareTemporal(nextEndTemporal, nextTemporalStart) < 0) {
+//                    bufferedRows.add(row);
+//                    break;
+//                }
+            }
+        }
+
     }
 
     /**
@@ -336,6 +473,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         while (bufferedIterator.hasNext()) {
             DataRow row = bufferedIterator.next();
             container.addRowToTable(row);
+            currRow++;
 
             if (((DurationCell)row.getCell(column)).getDuration().compareTo(nextStartDuration) < 0) {
                 bufferedIterator.remove();
@@ -358,11 +496,14 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
             /* Add overlapping rows to the buffer. */
             if (currDuration.compareTo(nextStartDuration) >= 0) {
                 bufferedRows.add(row);
+                currRow++;
             }
 
             /* Add row to current output. */
             if (currDuration.compareTo(endDuration) < 0) {
                 container.addRowToTable(row);
+            } else {
+                break;
             }
         }
 
@@ -578,6 +719,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     protected void reset() {
         currRow = 0;
         MissingRow.rowCounter = 0;
+        lastWindow = false;
         //        m_iteration = 0;
         if (m_iterator != null) {
             m_iterator.close();
@@ -595,7 +737,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
             return currRow >= rowCount;
         }
 
-        return !m_iterator.hasNext() && (bufferedRows == null || bufferedRows.isEmpty());
+        return lastWindow || !m_iterator.hasNext() && (bufferedRows == null || bufferedRows.isEmpty());
     }
 
     /**

@@ -169,12 +169,13 @@ final class LoopStartWindowConfiguration {
         settings.addInt("windowSize", windowSize);
         settings.addString("trigger", trigger.name());
         settings.addString("windowDefinition", windowDefinition.name());
-        settings.addString("startDuration", null);
-        settings.addString("windowDuration", null);
 
         if (startDuration != null) {
             settings.addString("startDuration", DurationPeriodFormatUtils.formatDurationLong(startDuration));
             settings.addString("windowDuration", DurationPeriodFormatUtils.formatDurationLong(windowDuration));
+        } else {
+            settings.addString("startDuration", null);
+            settings.addString("windowDuration", null);
         }
     }
 
@@ -258,6 +259,26 @@ final class LoopStartWindowConfiguration {
             setWindowSize(settings.getInt("windowSize", 1));
         } catch (InvalidSettingsException e) {
             windowSize = 1;
+        }
+
+        try {
+            if (settings.getString("startDuration") != null) {
+                startDuration = DurationPeriodFormatUtils.parseDuration(settings.getString("startDuration"));
+            }
+        } catch (DateTimeParseException e) {
+            startDuration = null;
+        } catch (InvalidSettingsException e) {
+            startDuration = null;
+        }
+
+        try {
+            if (settings.getString("windowDuration") != null) {
+                windowDuration = DurationPeriodFormatUtils.parseDuration(settings.getString("windowDuration"));
+            }
+        } catch (DateTimeParseException e) {
+            windowDuration = null;
+        } catch (InvalidSettingsException e) {
+            windowDuration = null;
         }
     }
 
