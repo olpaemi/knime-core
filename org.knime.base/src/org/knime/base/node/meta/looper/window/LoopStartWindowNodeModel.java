@@ -53,6 +53,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZonedDateTime;
 import java.time.temporal.Temporal;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -69,6 +70,7 @@ import org.knime.core.data.time.duration.DurationCell;
 import org.knime.core.data.time.localdate.LocalDateCell;
 import org.knime.core.data.time.localdatetime.LocalDateTimeCell;
 import org.knime.core.data.time.localtime.LocalTimeCell;
+import org.knime.core.data.time.zoneddatetime.ZonedDateTimeCell;
 import org.knime.core.node.BufferedDataContainer;
 import org.knime.core.node.BufferedDataTable;
 import org.knime.core.node.CanceledExecutionException;
@@ -94,7 +96,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     // loop invariants
     // private BufferedDataTable m_table;
 
-    private CloseableRowIterator m_iterator;
+    private CloseableRowIterator rowIterator;
 
     // loop variants
     // private int m_iteration;
@@ -124,6 +126,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
 
     private boolean lastWindow;
 
+    private boolean printedMissingWarning;
+
     /**
      * Creates a new model.
      */
@@ -140,9 +144,14 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
             windowConfig = new LoopStartWindowConfiguration();
             setWarningMessage("Using default: " + windowConfig);
         }
-        //        assert m_iteration == 0;
-        //        pushFlowVariableInt("currentIteration", m_iteration);
-        //        pushFlowVariableInt("maxIterations", 0);
+
+        DataTableSpec tableSpec = inSpecs[0];
+
+        if (windowConfig.getTrigger() == Trigger.TIME && !tableSpec.containsName(timeColumnName)) {
+            throw new InvalidSettingsException(
+                "Selected time column '" + timeColumnName + "' does not exist in input table.");
+        }
+
         return inSpecs;
     }
 
@@ -156,13 +165,18 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         rowCount = table.size();
 
         if (currRow == 0) {
-            m_iterator = table.iterator();
+            rowIterator = table.iterator();
             bufferedRows = new LinkedList<>();
 
             nColumns = table.getSpec().getNumColumns();
         }
 
         if (windowConfig.getTrigger().equals(Trigger.EVENT)) {
+            /* If window is limited to the table all three variants are the same. */
+            if (windowConfig.getLimitWindow()) {
+                return executeForward(table, exec);
+            }
+
             switch (windowConfig.getWindowDefinition()) {
                 case BACKWARD:
                     return executeBackward(table, exec);
@@ -177,8 +191,6 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
                     return null;
             }
         }
-
-        /* TODO: Check Date Only (invalid plus => period) */
 
         int column = table.getDataTableSpec().findColumnIndex(timeColumnName);
         boolean duration =
@@ -209,12 +221,17 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         lastWindow = false;
 
         /* Compute end duration of window and beginning of next duration*/
-        if (nextStartTemporal == null && m_iterator.hasNext()) {
-            DataRow first = m_iterator.next();
+        if (nextStartTemporal == null && rowIterator.hasNext()) {
+            DataRow first = rowIterator.next();
 
             /* Check if column only consists of missing values. */
-            while (first.getCell(column).isMissing() && m_iterator.hasNext()) {
-                first = m_iterator.next();
+            while (first.getCell(column).isMissing() && rowIterator.hasNext()) {
+                first = rowIterator.next();
+
+                if (!printedMissingWarning) {
+                    printedMissingWarning = true;
+                    getLogger().warn("Detected missing values for specified column; rows have been skipped.");
+                }
             }
 
             if (first.getCell(column).isMissing()) {
@@ -287,10 +304,15 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         }
 
         /* Add newly read rows. */
-        while (m_iterator.hasNext() && allBufferedRowsInWindow) {
-            DataRow row = m_iterator.next();
+        while (rowIterator.hasNext() && allBufferedRowsInWindow) {
+            DataRow row = rowIterator.next();
 
             if (row.getCell(column).isMissing()) {
+                if (!printedMissingWarning) {
+                    printedMissingWarning = true;
+                    getLogger().warn("Detected missing values for specified column; rows have been skipped.");
+                }
+
                 continue;
             }
 
@@ -321,18 +343,28 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         DataRow row = null;
         /* Close iterator if last window has been filled. */
         if (lastWindow) {
-            m_iterator.close();
+            rowIterator.close();
         } else if (!allBufferedRowsInWindow) {
             row = bufferedRows.remove();
-        } else if (bufferedRows.size() == 0 && m_iterator.hasNext()) {
-            row = m_iterator.next();
+        } else if (bufferedRows.size() == 0 && rowIterator.hasNext()) {
+            row = rowIterator.next();
 
-            while (row.getCell(column).isMissing() && m_iterator.hasNext()) {
-                row = m_iterator.next();
+            while (row.getCell(column).isMissing() && rowIterator.hasNext()) {
+                row = rowIterator.next();
+
+                if (row.getCell(column).isMissing() && !printedMissingWarning) {
+                    printedMissingWarning = true;
+                    getLogger().warn("Detected missing values for specified column; rows have been skipped.");
+                }
             }
 
             if (row.getCell(column).isMissing()) {
                 row = null;
+
+                if (!printedMissingWarning) {
+                    printedMissingWarning = true;
+                    getLogger().warn("Detected missing values for specified column; rows have been skipped.");
+                }
             }
         } else if (!overflow && !bufferedRows.isEmpty()) {
             /* Checks if the next buffered row lies within the given window */
@@ -359,10 +391,15 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         final Duration windowDuration) {
         while (row != null) {
             /* Check if current row lies beyond next starting temporal. */
-            while (compareTemporal(getTemporal(row.getCell(column)), nextStartTemporal) < 0 && m_iterator.hasNext()) {
-                DataRow temp = m_iterator.next();
+            while (compareTemporal(getTemporal(row.getCell(column)), nextStartTemporal) < 0 && rowIterator.hasNext()) {
+                DataRow temp = rowIterator.next();
 
                 if (temp.getCell(column).isMissing()) {
+                    if (!printedMissingWarning) {
+                        printedMissingWarning = true;
+                        getLogger().warn("Detected missing values for specified column; rows have been skipped.");
+                    }
+
                     continue;
                 }
 
@@ -375,7 +412,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
                 bufferedRows.addFirst(row);
                 break;
             } else if (compareTemporal(getTemporal(row.getCell(column)), nextStartTemporal) < 0
-                && !m_iterator.hasNext()) {
+                && !rowIterator.hasNext()) {
                 /* There are no more rows that could lie within an upcoming window. */
                 break;
             }
@@ -385,7 +422,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
 
             /* Check for overflow of the next starting interval. */
             if (compareTemporal(nextTemporalStart, nextStartTemporal) <= 0) {
-                m_iterator.close();
+                rowIterator.close();
                 break;
             } else {
                 nextStartTemporal = nextTemporalStart;
@@ -424,6 +461,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
             return ((LocalDateTime)t1).compareTo((LocalDateTime)t2);
         } else if (t1 instanceof LocalDate) {
             return ((LocalDate)t1).compareTo((LocalDate)t2);
+        } else if (t1 instanceof ZonedDateTime) {
+            return ((ZonedDateTime)t1).compareTo((ZonedDateTime)t2);
         }
 
         throw new IllegalArgumentException("Data must be of type LocalDate, LocalDateTime, or LocalTime");
@@ -446,12 +485,17 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         lastWindow = false;
 
         /* Compute end duration of window and beginning of next duration*/
-        if (nextStartDuration == null && m_iterator.hasNext()) {
-            DataRow first = m_iterator.next();
+        if (nextStartDuration == null && rowIterator.hasNext()) {
+            DataRow first = rowIterator.next();
 
             /* Check if column only consists of missing values. */
-            while (first.getCell(column).isMissing() && m_iterator.hasNext()) {
-                first = m_iterator.next();
+            while (first.getCell(column).isMissing() && rowIterator.hasNext()) {
+                first = rowIterator.next();
+
+                if (!printedMissingWarning) {
+                    printedMissingWarning = true;
+                    getLogger().warn("Detected missing values for specified column; rows have been skipped.");
+                }
             }
 
             if (first.getCell(column).isMissing()) {
@@ -525,10 +569,15 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         }
 
         /* Add newly read rows. */
-        while (m_iterator.hasNext() && allBufferedRowsInWindow) {
-            DataRow row = m_iterator.next();
+        while (rowIterator.hasNext() && allBufferedRowsInWindow) {
+            DataRow row = rowIterator.next();
 
             if (row.getCell(column).isMissing()) {
+                if (!printedMissingWarning) {
+                    printedMissingWarning = true;
+                    getLogger().warn("Detected missing values for specified column; rows have been skipped.");
+                }
+
                 continue;
             }
 
@@ -559,18 +608,28 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         DataRow row = null;
         /* Close iterator if last window has been filled. */
         if (lastWindow) {
-            m_iterator.close();
+            rowIterator.close();
         } else if (!allBufferedRowsInWindow) {
             row = bufferedRows.remove();
-        } else if (bufferedRows.size() == 0 && m_iterator.hasNext()) {
-            row = m_iterator.next();
+        } else if (bufferedRows.size() == 0 && rowIterator.hasNext()) {
+            row = rowIterator.next();
 
-            while (row.getCell(column).isMissing() && m_iterator.hasNext()) {
-                row = m_iterator.next();
+            while (row.getCell(column).isMissing() && rowIterator.hasNext()) {
+                row = rowIterator.next();
+
+                if (row.getCell(column).isMissing() && !printedMissingWarning) {
+                    printedMissingWarning = true;
+                    getLogger().warn("Detected missing values for specified column; rows have been skipped.");
+                }
             }
 
             if (row.getCell(column).isMissing()) {
                 row = null;
+
+                if (!printedMissingWarning) {
+                    printedMissingWarning = true;
+                    getLogger().warn("Detected missing values for specified column; rows have been skipped.");
+                }
             }
         } else if (!overflow && !bufferedRows.isEmpty()) {
             /* Checks if the next buffered row lies within the given window */
@@ -678,10 +737,15 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         while (row != null) {
             /* Check if current row lies beyond next starting temporal. */
             while (((DurationCell)row.getCell(column)).getDuration().compareTo(nextStartDuration) < 0
-                && m_iterator.hasNext()) {
-                DataRow temp = m_iterator.next();
+                && rowIterator.hasNext()) {
+                DataRow temp = rowIterator.next();
 
                 if (temp.getCell(column).isMissing()) {
+                    if (!printedMissingWarning) {
+                        printedMissingWarning = true;
+                        getLogger().warn("Detected missing values for specified column; rows have been skipped.");
+                    }
+
                     continue;
                 }
 
@@ -694,7 +758,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
                 bufferedRows.addFirst(row);
                 break;
             } else if (((DurationCell)row.getCell(column)).getDuration().compareTo(nextStartDuration) < 0
-                && !m_iterator.hasNext()) {
+                && !rowIterator.hasNext()) {
                 /* There are no more rows that could lie within an upcoming window. */
                 break;
             }
@@ -704,7 +768,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
 
             /* Check for overflow of the next starting interval. */
             if (nextDurationStart.compareTo(nextStartDuration) <= 0) {
-                m_iterator.close();
+                rowIterator.close();
                 break;
             } else {
                 nextStartDuration = nextDurationStart;
@@ -720,9 +784,13 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         if (cell instanceof LocalTimeCell) {
             return ((LocalTimeCell)cell).getLocalTime();
         } else if (cell instanceof LocalDateCell) {
-            return ((LocalDateCell)cell).getLocalDate();
+            LocalDate date = ((LocalDateCell)cell).getLocalDate();
+            LocalDateTime dateTime = LocalDateTime.of(date.getYear(), date.getMonth(), date.getDayOfMonth(), 0, 0);
+            return dateTime;
         } else if (cell instanceof LocalDateTimeCell) {
             return ((LocalDateTimeCell)cell).getLocalDateTime();
+        } else if (cell instanceof ZonedDateTimeCell) {
+            return ((ZonedDateTimeCell)cell).getZonedDateTime();
         }
 
         return null;
@@ -747,8 +815,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         if (stepSize > windowSize && currRow > 0) {
             int diff = stepSize - windowSize;
 
-            while (diff > 0 && m_iterator.hasNext()) {
-                m_iterator.next();
+            while (diff > 0 && rowIterator.hasNext()) {
+                rowIterator.next();
                 diff--;
             }
         }
@@ -771,8 +839,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         }
 
         /* Add newly read rows. */
-        for (; container.size() < windowSize && m_iterator.hasNext(); currRowCount++) {
-            DataRow dRow = m_iterator.next();
+        for (; container.size() < windowSize && rowIterator.hasNext(); currRowCount++) {
+            DataRow dRow = rowIterator.next();
 
             if (currRowCount >= stepSize) {
                 bufferedRows.add(dRow);
@@ -813,8 +881,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         if (stepSize > windowSize && currRow > 0) {
             int diff = stepSize - windowSize;
 
-            while (diff > 0 && m_iterator.hasNext()) {
-                m_iterator.next();
+            while (diff > 0 && rowIterator.hasNext()) {
+                rowIterator.next();
                 diff--;
             }
         }
@@ -831,8 +899,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         }
 
         /* Add newly read rows. */
-        for (; container.size() < windowSize && m_iterator.hasNext(); currRowCount++) {
-            DataRow dRow = m_iterator.next();
+        for (; container.size() < windowSize && rowIterator.hasNext(); currRowCount++) {
+            DataRow dRow = rowIterator.next();
 
             if (currRowCount >= stepSize) {
                 bufferedRows.add(dRow);
@@ -869,8 +937,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         if (stepSize > windowSize && currRow > 0) {
             int diff = stepSize - windowSize;
 
-            while (diff > 0 && m_iterator.hasNext()) {
-                m_iterator.next();
+            while (diff > 0 && rowIterator.hasNext()) {
+                rowIterator.next();
                 diff--;
             }
         }
@@ -890,8 +958,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         }
 
         /* Add newly read rows. */
-        for (; container.size() < windowSize && m_iterator.hasNext(); currRowCount++) {
-            DataRow dRow = m_iterator.next();
+        for (; container.size() < windowSize && rowIterator.hasNext(); currRowCount++) {
+            DataRow dRow = rowIterator.next();
 
             if (currRowCount >= stepSize) {
                 bufferedRows.add(dRow);
@@ -920,11 +988,12 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         currRow = 0;
         MissingRow.rowCounter = 0;
         lastWindow = false;
+        printedMissingWarning = false;
         //        m_iteration = 0;
-        if (m_iterator != null) {
-            m_iterator.close();
+        if (rowIterator != null) {
+            rowIterator.close();
         }
-        m_iterator = null;
+        rowIterator = null;
         //        m_table = null;
         nextStartDuration = null;
         nextStartTemporal = null;
@@ -934,10 +1003,15 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     @Override
     public boolean terminateLoop() {
         if (windowConfig.getTrigger().equals(Trigger.EVENT)) {
+            /* If we limit the window to fit in the table we might terminate earlier. */
+            if (windowConfig.getLimitWindow()) {
+                return rowCount - currRow < windowConfig.getWindowSize();
+            }
+
             return currRow >= rowCount;
         }
 
-        return lastWindow || !m_iterator.hasNext() && (bufferedRows == null || bufferedRows.isEmpty());
+        return lastWindow || !rowIterator.hasNext() && (bufferedRows == null || bufferedRows.isEmpty());
     }
 
     /**

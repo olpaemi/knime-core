@@ -58,6 +58,7 @@ import java.time.format.DateTimeParseException;
 
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
+import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JRadioButton;
@@ -72,6 +73,7 @@ import org.knime.core.data.time.duration.DurationValue;
 import org.knime.core.data.time.localdate.LocalDateValue;
 import org.knime.core.data.time.localdatetime.LocalDateTimeValue;
 import org.knime.core.data.time.localtime.LocalTimeValue;
+import org.knime.core.data.time.zoneddatetime.ZonedDateTimeValue;
 import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.NodeDialogPane;
 import org.knime.core.node.NodeSettingsRO;
@@ -114,6 +116,8 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
 
     private final JTextField startTime;
 
+    private final JCheckBox limitWindowCheckBox;
+
     private final DialogComponentColumnNameSelection columnSelector;
 
     /**
@@ -149,8 +153,12 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         windowTimeLabel = new JLabel("Window time");
         startTimeLabel = new JLabel("Starting interval");
 
-        columnSelector = new DialogComponentColumnNameSelection(createColumnModel(), "time column", 0, false,
-            DurationValue.class, LocalTimeValue.class, LocalDateTimeValue.class, LocalDateValue.class);
+        limitWindowCheckBox = new JCheckBox("Limit window to table");
+        limitWindowCheckBox.setSelected(false);
+
+        columnSelector =
+            new DialogComponentColumnNameSelection(createColumnModel(), "time column", 0, false, DurationValue.class,
+                LocalTimeValue.class, LocalDateTimeValue.class, LocalDateValue.class, ZonedDateTimeValue.class);
 
         ActionListener triggerListener = new ActionListener() {
 
@@ -164,14 +172,16 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
                 /* Event triggered */
                 windowSizeSpinner.setEnabled(eventTrigRButton.isSelected());
                 stepSizeSpinner.setEnabled(eventTrigRButton.isSelected());
-                forwardRButton.setEnabled(eventTrigRButton.isSelected());
-                backwardRButton.setEnabled(eventTrigRButton.isSelected());
-                centralRButton.setEnabled(eventTrigRButton.isSelected());
+                forwardRButton.setEnabled(eventTrigRButton.isSelected() && !limitWindowCheckBox.isSelected());
+                backwardRButton.setEnabled(eventTrigRButton.isSelected() && !limitWindowCheckBox.isSelected());
+                centralRButton.setEnabled(eventTrigRButton.isSelected() && !limitWindowCheckBox.isSelected());
+                limitWindowCheckBox.setEnabled(eventTrigRButton.isSelected());
             }
         };
 
         eventTrigRButton.addActionListener(triggerListener);
         timeTrigRButton.addActionListener(triggerListener);
+        limitWindowCheckBox.addActionListener(triggerListener);
 
         forwardRButton.doClick();
         eventTrigRButton.doClick();
@@ -237,6 +247,10 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         subConstraint.gridx++;
         eventPanel.add(backwardRButton, subConstraint);
 
+        subConstraint.gridx -= 2;
+        subConstraint.gridy++;
+        eventPanel.add(limitWindowCheckBox, subConstraint);
+
         eventPanel.setBorder(BorderFactory.createTitledBorder("Event Triggered"));
 
         constraint.gridy++;
@@ -290,6 +304,7 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
 
         windowSizeSpinner.setValue(config.getWindowSize());
         stepSizeSpinner.setValue(config.getStepSize());
+        limitWindowCheckBox.setSelected(config.getLimitWindow());
 
         switch (config.getWindowDefinition()) {
             case FORWARD:
@@ -318,12 +333,10 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
     /** {@inheritDoc} */
     @Override
     protected void saveSettingsTo(final NodeSettingsWO settings) throws InvalidSettingsException {
-        /* TODO: localtime: duration <24h */
-        /* TODO: duration > 0 */
-        /* TODO: localdate: duration >= 24h*/
         LoopStartWindowConfiguration config = new LoopStartWindowConfiguration();
         config.setWindowSize((Integer)windowSizeSpinner.getValue());
         config.setStepSize((Integer)stepSizeSpinner.getValue());
+        config.setLimitWindow(limitWindowCheckBox.isSelected());
 
         if (forwardRButton.isSelected()) {
             config.setWindowDefinition(WindowDefinition.FORWARD);

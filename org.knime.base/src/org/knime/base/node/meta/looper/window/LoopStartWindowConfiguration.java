@@ -91,6 +91,8 @@ final class LoopStartWindowConfiguration {
 
     private Duration windowDuration;
 
+    private boolean limitWindow;
+
     /** @return the window definition */
     WindowDefinition getWindowDefinition() {
         return windowDefinition;
@@ -169,6 +171,7 @@ final class LoopStartWindowConfiguration {
         settings.addInt("windowSize", windowSize);
         settings.addString("trigger", trigger.name());
         settings.addString("windowDefinition", windowDefinition.name());
+        settings.addBoolean("limitWindow", limitWindow);
 
         if (startDuration != null) {
             settings.addString("startDuration", DurationPeriodFormatUtils.formatDurationLong(startDuration));
@@ -228,6 +231,8 @@ final class LoopStartWindowConfiguration {
         } catch (DateTimeParseException e) {
             windowDuration = null;
         }
+
+        setLimitWindow(settings.getBoolean("limitWindow", false));
     }
 
     /**
@@ -280,6 +285,8 @@ final class LoopStartWindowConfiguration {
         } catch (InvalidSettingsException e) {
             windowDuration = null;
         }
+
+        setLimitWindow(settings.getBoolean("limitWindow", false));
     }
 
     /** {@inheritDoc} */
@@ -308,6 +315,20 @@ final class LoopStartWindowConfiguration {
 
     Duration getWindowDuration() {
         return windowDuration;
+    }
+
+    /**
+     * @param selected
+     */
+    public void setLimitWindow(final boolean selected) {
+        limitWindow = selected;
+    }
+
+    /**
+     * @return
+     */
+    public boolean getLimitWindow() {
+        return limitWindow;
     }
 
 }
