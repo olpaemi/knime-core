@@ -87,7 +87,7 @@ final class LoopStartWindowConfiguration {
 
     private int windowSize = 1;
 
-    private Duration startDuration;
+    private Duration startInterval;
 
     private Duration windowDuration;
 
@@ -173,8 +173,8 @@ final class LoopStartWindowConfiguration {
         settings.addString("windowDefinition", windowDefinition.name());
         settings.addBoolean("limitWindow", limitWindow);
 
-        if (startDuration != null) {
-            settings.addString("startDuration", DurationPeriodFormatUtils.formatDurationLong(startDuration));
+        if (startInterval != null) {
+            settings.addString("startDuration", DurationPeriodFormatUtils.formatDurationLong(startInterval));
             settings.addString("windowDuration", DurationPeriodFormatUtils.formatDurationLong(windowDuration));
         } else {
             settings.addString("startDuration", null);
@@ -218,10 +218,10 @@ final class LoopStartWindowConfiguration {
 
         try {
             if (settings.getString("startDuration") != null) {
-                startDuration = DurationPeriodFormatUtils.parseDuration(settings.getString("startDuration"));
+                startInterval = DurationPeriodFormatUtils.parseDuration(settings.getString("startDuration"));
             }
         } catch (DateTimeParseException e) {
-            startDuration = null;
+            startInterval = null;
         }
 
         try {
@@ -268,12 +268,12 @@ final class LoopStartWindowConfiguration {
 
         try {
             if (settings.getString("startDuration") != null) {
-                startDuration = DurationPeriodFormatUtils.parseDuration(settings.getString("startDuration"));
+                startInterval = DurationPeriodFormatUtils.parseDuration(settings.getString("startDuration"));
             }
         } catch (DateTimeParseException e) {
-            startDuration = null;
+            startInterval = null;
         } catch (InvalidSettingsException e) {
-            startDuration = null;
+            startInterval = null;
         }
 
         try {
@@ -296,36 +296,45 @@ final class LoopStartWindowConfiguration {
     }
 
     /**
-     * @param start
+     * Sets the duration of the starting interval.
+     *
+     * @param duration of the starting interval.
      */
-    void setStartDuration(final Duration start) {
-        startDuration = start;
+    void setStartInterval(final Duration duration) {
+        startInterval = duration;
     }
 
     Duration getStartDuration() {
-        return startDuration;
+        return startInterval;
     }
 
     /**
-     * @param dur
+     * Set the window duration.
+     *
+     * @param duration of window.
      */
-    void setWindowDuration(final Duration dur) {
-        windowDuration = dur;
+    void setWindowDuration(final Duration duration) {
+        windowDuration = duration;
     }
 
+    /**
+     * @return duration of the window
+     */
     Duration getWindowDuration() {
         return windowDuration;
     }
 
     /**
-     * @param selected
+     * Sets of the window shall be limited to the table.
+     *
+     * @param selected {@code true} if the window shall be limited, {@code false} otherwise.
      */
     public void setLimitWindow(final boolean selected) {
         limitWindow = selected;
     }
 
     /**
-     * @return
+     * @return {@code true} if window shall be limited to the table
      */
     public boolean getLimitWindow() {
         return limitWindow;

@@ -91,15 +91,11 @@ import org.knime.core.node.workflow.LoopStartNodeTerminator;
  */
 public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeTerminator {
 
+    // Config used to get the settings
     private LoopStartWindowConfiguration windowConfig;
 
-    // loop invariants
-    // private BufferedDataTable m_table;
-
+    // Input iterator
     private CloseableRowIterator rowIterator;
-
-    // loop variants
-    // private int m_iteration;
 
     // number of columns
     private int nColumns;
@@ -112,10 +108,13 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     // buffered rows used for overlapping
     private LinkedList<DataRow> bufferedRows;
 
+    // Name of the chosen time column
     private String timeColumnName;
 
+    // Next start of the window
     private Duration nextStartDuration;
 
+    // Next start of the window
     private Temporal nextStartTemporal;
 
     // Used to check if table is sorted
@@ -124,8 +123,10 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     // Used to check if table is sorted
     private Temporal prevTemporal;
 
+    // To check if an overflow occurred concerning next starting temporal.
     private boolean lastWindow;
 
+    // To ensure that warning message will be printed only once
     private boolean printedMissingWarning;
 
     /**
@@ -172,11 +173,6 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         }
 
         if (windowConfig.getTrigger().equals(Trigger.EVENT)) {
-            /* If window is limited to the table all three variants are the same. */
-            if (windowConfig.getLimitWindow()) {
-                return executeForward(table, exec);
-            }
-
             switch (windowConfig.getWindowDefinition()) {
                 case BACKWARD:
                     return executeBackward(table, exec);
@@ -205,9 +201,11 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     }
 
     /**
-     * @param table
-     * @param exec
-     * @return
+     * Computes for temporal datatypes the next window that shall be returned.
+     *
+     * @param table that holds the data.
+     * @param exec context of the execution.
+     * @return Next window.
      */
     private BufferedDataTable[] executeTemporal(final BufferedDataTable table, final ExecutionContext exec) {
         int column = table.getDataTableSpec().findColumnIndex(timeColumnName);
@@ -215,7 +213,7 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         Duration windowDuration = windowConfig.getWindowDuration();
         Temporal windowEnd = null;
 
-        // To check if an overflow occurred concerning the current window
+        /* To check if an overflow occurred concerning the current window */
         boolean overflow = false;
         // To check if an overflow occurred concerning next starting temporal.
         lastWindow = false;
@@ -385,7 +383,12 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     }
 
     /**
-     * @param row
+     * Skips the window for temporal datatypes until we obtain a window containing at least one row.
+     *
+     * @param row that is currently considered.
+     * @param column index of the time column.
+     * @param startInterval starting interval of the windows.
+     * @param windowDuration duration of the window.
      */
     private void skipTemporalWindows(DataRow row, final int column, final Duration startInterval,
         final Duration windowDuration) {
@@ -426,33 +429,17 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
                 break;
             } else {
                 nextStartTemporal = nextTemporalStart;
-                /* Get next row s.t. temporal of row is greater than next starting temporal. */
-                //                while (compareTemporal(getTemporal(row.getCell(column)), nextTemporalStart) < 0
-                //                 hos   && m_iterator.hasNext()) {
-                //                    row = m_iterator.next();
-                //                }
-                //
-                //                /* Check if the current found temporal of row is greater than next starting temporal. */
-                //                if (compareTemporal(getTemporal(row.getCell(column)), nextTemporalStart) < 0) {
-                //                    break;
-                //                }
-                //
-                //                /* Check if current point lies within the given window. */
-                //                Temporal nextEndTemporal = nextTemporalStart.plus(windowDuration);
-                //                if (compareTemporal(getTemporal(row.getCell(column)), nextEndTemporal) < 0
-                //                    || compareTemporal(nextEndTemporal, nextTemporalStart) < 0) {
-                //                    bufferedRows.add(row);
-                //                    break;
-                //                }
             }
         }
 
     }
 
     /**
-     * @param nextRow
-     * @param endTemporal
-     * @return
+     * Compares the temporal.
+     *
+     * @param t1 first temporal
+     * @param t2 second temporal
+     * @return the comparator value, negative if less, positive if greater
      */
     private int compareTemporal(final Temporal t1, final Temporal t2) {
         if (t1 instanceof LocalTime) {
@@ -469,9 +456,11 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     }
 
     /**
-     * @param table
-     * @param exec
-     * @return
+     * Computes for datatype Duration the next window that shall be returned.
+     *
+     * @param table that holds the data.
+     * @param exec context of the execution.
+     * @return Next window.
      */
     private BufferedDataTable[] executeDuration(final BufferedDataTable table, final ExecutionContext exec) {
         int column = table.getDataTableSpec().findColumnIndex(timeColumnName);
@@ -647,90 +636,15 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         container.close();
 
         return new BufferedDataTable[]{container.getTable()};
-        //        int column = table.getDataTableSpec().findColumnIndex(timeColumnName);
-        //
-        //        Duration startInterval = windowConfig.getStartDuration();
-        //        Duration windowDuration = windowConfig.getWindowDuration();
-        //        Duration endDuration = null;
-        //
-        //        /* Compute end duration of window and beginning of next duration*/
-        //        if (nextStartDuration == null && m_iterator.hasNext()) {
-        //            DataRow first = m_iterator.next();
-        //
-        //            Duration firstStart = ((DurationCell)first.getCell(column)).getDuration();
-        //            prevDuration = firstStart;
-        //
-        //            nextStartDuration = firstStart.plus(startInterval);
-        //            endDuration = firstStart.plus(windowDuration);
-        //
-        //            bufferedRows.add(first);
-        //        } else {
-        //            /* Move window by interval until it contains at least one row. */
-        //            if (bufferedRows.isEmpty() && m_iterator.hasNext()) {
-        //                bufferedRows.add(m_iterator.next());
-        //            }
-        //
-        //            Duration nextRow = ((DurationCell)bufferedRows.getFirst().getCell(column)).getDuration();
-        //
-        //            prevDuration = nextRow;
-        //
-        //            do {
-        //                endDuration = nextStartDuration.plus(windowDuration);
-        //                nextStartDuration = nextStartDuration.plus(startInterval);
-        //            } while (nextRow.compareTo(endDuration) >= 0);
-        //        }
-        //
-        //        BufferedDataContainer container = exec.createDataContainer(table.getSpec());
-        //        Iterator<DataRow> bufferedIterator = bufferedRows.iterator();
-        //
-        //        /* Add buffered rows. */
-        //        while (bufferedIterator.hasNext()) {
-        //            DataRow row = bufferedIterator.next();
-        //            container.addRowToTable(row);
-        //            currRow++;
-        //
-        //            if (((DurationCell)row.getCell(column)).getDuration().compareTo(nextStartDuration) < 0) {
-        //                bufferedIterator.remove();
-        //            }
-        //        }
-        //
-        //        /* Add newly read rows. */
-        //        while (m_iterator.hasNext()) {
-        //            DataRow row = m_iterator.next();
-        //
-        //            Duration currDuration = ((DurationCell)row.getCell(column)).getDuration();
-        //
-        //            /* Check if table is sorted according to temporal column. */
-        //            if (currDuration.compareTo(prevDuration) < 0) {
-        //                throw new IllegalStateException("Table not in ascending order concerning chosen temporal column.");
-        //            }
-        //
-        //            prevDuration = currDuration;
-        //
-        //            /* Add overlapping rows to the buffer. */
-        //            if (currDuration.compareTo(nextStartDuration) >= 0) {
-        //                bufferedRows.add(row);
-        //                currRow++;
-        //            }
-        //
-        //            /* Add row to current output. */
-        //            if (currDuration.compareTo(endDuration) < 0) {
-        //                container.addRowToTable(row);
-        //            } else {
-        //                break;
-        //            }
-        //        }
-        //
-        //        container.close();
-        //
-        //        return new BufferedDataTable[]{container.getTable()};
     }
 
     /**
-     * @param row
-     * @param column
-     * @param startInterval
-     * @param windowDuration
+     * Skips the window for datatype Duration until we obtain a window containing at least one row.
+     *
+     * @param row that is currently considered.
+     * @param column index of the time column.
+     * @param startInterval starting interval of the windows.
+     * @param windowDuration duration of the window.
      */
     private void skipDurationWindows(DataRow row, final int column, final Duration startInterval,
         final Duration windowDuration) {
@@ -777,8 +691,10 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
     }
 
     /**
-     * @param cell
-     * @return
+     * Returns the content of the given DataCell.
+     *
+     * @param cell which holds the content
+     * @return temporal object of the cell, null if the DataCell does not contain a temporal object.
      */
     private Temporal getTemporal(final DataCell cell) {
         if (cell instanceof LocalTimeCell) {
@@ -809,7 +725,6 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         int currRowCount = 0;
 
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
-        Iterator<DataRow> bufferedIterator = bufferedRows.iterator();
 
         /* Jump to next following row if step size is greater than the window size. */
         if (stepSize > windowSize && currRow > 0) {
@@ -821,6 +736,28 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
             }
         }
 
+        /* If window is limited, i.e. no missing rows shall be inserted, move the window until there are no missing rows. */
+        if (windowConfig.getLimitWindow() && currRow < windowSize) {
+            /* windowSize-1 are the number of rows we have in front of the considered row. */
+            long bufferStart = -(windowSize - 1);
+            long nextRow = currRow;
+
+            while (bufferStart < 0) {
+                bufferStart += stepSize;
+                nextRow += stepSize;
+            }
+
+            while (currRow < bufferStart && rowIterator.hasNext()) {
+                rowIterator.next();
+                currRow++;
+            }
+
+            while (currRow < nextRow && rowIterator.hasNext()) {
+                bufferedRows.add(rowIterator.next());
+                currRow++;
+            }
+        }
+
         /* Add missing preceding rows to fill up the window at the beginning of the loop. */
         while (container.size() < windowSize - (currRow + 1)) {
             container.addRowToTable(new MissingRow(nColumns));
@@ -828,6 +765,8 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         }
 
         /* Add buffered rows that overlap. */
+        Iterator<DataRow> bufferedIterator = bufferedRows.iterator();
+
         while (bufferedIterator.hasNext()) {
             container.addRowToTable(bufferedIterator.next());
 
@@ -869,13 +808,6 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         int currRowCount = 0;
 
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
-        Iterator<DataRow> bufferedIterator = bufferedRows.iterator();
-
-        /* Fill missing preceding rows with missing values. Only needed at the start of*/
-        while (container.size() < Math.floorDiv(windowSize, 2) - (currRow)) {
-            container.addRowToTable(new MissingRow(nColumns));
-            currRowCount++;
-        }
 
         /* Jump to next following row if step size is greater than the window size.*/
         if (stepSize > windowSize && currRow > 0) {
@@ -886,6 +818,35 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
                 diff--;
             }
         }
+
+        /* If window is limited, i.e. no missing rows shall be inserted, move the window until there are no missing rows. */
+        if (windowConfig.getLimitWindow() && currRow < Math.floorDiv(windowSize, 2)) {
+            long bufferStart = -Math.floorDiv(windowSize, 2);
+            long nextRow = currRow;
+
+            while (bufferStart < 0) {
+                bufferStart += stepSize;
+                nextRow += stepSize;
+            }
+
+            while (currRow < bufferStart && rowIterator.hasNext()) {
+                rowIterator.next();
+                currRow++;
+            }
+
+            while (currRow < nextRow && rowIterator.hasNext()) {
+                bufferedRows.add(rowIterator.next());
+                currRow++;
+            }
+        }
+
+        /* Fill missing preceding rows with missing values. Only needed at the start of*/
+        while (container.size() < Math.floorDiv(windowSize, 2) - (currRow)) {
+            container.addRowToTable(new MissingRow(nColumns));
+            currRowCount++;
+        }
+
+        Iterator<DataRow> bufferedIterator = bufferedRows.iterator();
 
         /* Add buffered rows that overlap. */
         while (bufferedIterator.hasNext()) {
@@ -989,12 +950,12 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         MissingRow.rowCounter = 0;
         lastWindow = false;
         printedMissingWarning = false;
-        //        m_iteration = 0;
+
         if (rowIterator != null) {
             rowIterator.close();
         }
+
         rowIterator = null;
-        //        m_table = null;
         nextStartDuration = null;
         nextStartTemporal = null;
     }
@@ -1005,7 +966,21 @@ public class LoopStartWindowNodeModel extends NodeModel implements LoopStartNode
         if (windowConfig.getTrigger().equals(Trigger.EVENT)) {
             /* If we limit the window to fit in the table we might terminate earlier. */
             if (windowConfig.getLimitWindow()) {
-                return rowCount - currRow < windowConfig.getWindowSize();
+                /* Given window is too large. */
+                if (rowCount < windowConfig.getWindowSize()) {
+                    return true;
+                }
+
+                switch (windowConfig.getWindowDefinition()) {
+                    case FORWARD:
+                        return rowCount - currRow < windowConfig.getWindowSize();
+                    case BACKWARD:
+                        return currRow >= rowCount;
+                    case CENTRAL:
+                        return rowCount - currRow < Math.ceil(((double)windowConfig.getWindowSize()) / 2) - 1;
+                    default:
+                        return true;
+                }
             }
 
             return currRow >= rowCount;

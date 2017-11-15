@@ -172,9 +172,9 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
                 /* Event triggered */
                 windowSizeSpinner.setEnabled(eventTrigRButton.isSelected());
                 stepSizeSpinner.setEnabled(eventTrigRButton.isSelected());
-                forwardRButton.setEnabled(eventTrigRButton.isSelected() && !limitWindowCheckBox.isSelected());
-                backwardRButton.setEnabled(eventTrigRButton.isSelected() && !limitWindowCheckBox.isSelected());
-                centralRButton.setEnabled(eventTrigRButton.isSelected() && !limitWindowCheckBox.isSelected());
+                forwardRButton.setEnabled(eventTrigRButton.isSelected());
+                backwardRButton.setEnabled(eventTrigRButton.isSelected());
+                centralRButton.setEnabled(eventTrigRButton.isSelected());
                 limitWindowCheckBox.setEnabled(eventTrigRButton.isSelected());
             }
         };
@@ -357,7 +357,7 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
 
             try {
                 Duration startDur = DurationPeriodFormatUtils.parseDuration(startTime.getText());
-                config.setStartDuration(startDur);
+                config.setStartInterval(startDur);
             } catch (DateTimeParseException e) {
                 throw new InvalidSettingsException("No valid start duration: " + startTime.getText());
             }
