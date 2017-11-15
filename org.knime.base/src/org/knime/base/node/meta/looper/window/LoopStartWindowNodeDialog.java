@@ -69,7 +69,6 @@ import javax.swing.SpinnerNumberModel;
 import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.Trigger;
 import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.WindowDefinition;
 import org.knime.core.data.DataTableSpec;
-import org.knime.core.data.time.duration.DurationValue;
 import org.knime.core.data.time.localdate.LocalDateValue;
 import org.knime.core.data.time.localdatetime.LocalDateTimeValue;
 import org.knime.core.data.time.localtime.LocalTimeValue;
@@ -156,9 +155,8 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
         m_limitWindowCheckBox = new JCheckBox("Limit window to table");
         m_limitWindowCheckBox.setSelected(false);
 
-        m_columnSelector =
-            new DialogComponentColumnNameSelection(createColumnModel(), "time column", 0, false, DurationValue.class,
-                LocalTimeValue.class, LocalDateTimeValue.class, LocalDateValue.class, ZonedDateTimeValue.class);
+        m_columnSelector = new DialogComponentColumnNameSelection(createColumnModel(), "time column", 0, false,
+            LocalTimeValue.class, LocalDateTimeValue.class, LocalDateValue.class, ZonedDateTimeValue.class);
 
         ActionListener triggerListener = new ActionListener() {
 
@@ -172,9 +170,9 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
                 /* Event triggered */
                 m_windowSizeSpinner.setEnabled(m_eventTrigRButton.isSelected());
                 m_stepSizeSpinner.setEnabled(m_eventTrigRButton.isSelected());
-                m_forwardRButton.setEnabled(m_eventTrigRButton.isSelected());
-                m_backwardRButton.setEnabled(m_eventTrigRButton.isSelected());
-                m_centralRButton.setEnabled(m_eventTrigRButton.isSelected());
+                //                m_forwardRButton.setEnabled(m_eventTrigRButton.isSelected());
+                //                m_backwardRButton.setEnabled(m_eventTrigRButton.isSelected());
+                //                m_centralRButton.setEnabled(m_eventTrigRButton.isSelected());
                 m_limitWindowCheckBox.setEnabled(m_eventTrigRButton.isSelected());
             }
         };
@@ -239,16 +237,6 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
 
         subConstraint.gridx--;
         subConstraint.gridy++;
-        eventPanel.add(m_forwardRButton, subConstraint);
-
-        subConstraint.gridx++;
-        eventPanel.add(m_centralRButton, subConstraint);
-
-        subConstraint.gridx++;
-        eventPanel.add(m_backwardRButton, subConstraint);
-
-        subConstraint.gridx -= 2;
-        subConstraint.gridy++;
         eventPanel.add(m_limitWindowCheckBox, subConstraint);
 
         eventPanel.setBorder(BorderFactory.createTitledBorder("Event Triggered"));
@@ -291,6 +279,22 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
 
         constraint.gridy++;
         panel.add(timePanel, constraint);
+
+        /* Window definition sub-panel */
+        JPanel windowDefinitionPanel = new JPanel(new GridBagLayout());
+
+        subConstraint.gridx = 1;
+        subConstraint.gridy = 1;
+        windowDefinitionPanel.add(m_forwardRButton, subConstraint);
+
+        subConstraint.gridx++;
+        windowDefinitionPanel.add(m_centralRButton, subConstraint);
+
+        subConstraint.gridx++;
+        windowDefinitionPanel.add(m_backwardRButton, subConstraint);
+
+        constraint.gridy++;
+        panel.add(windowDefinitionPanel, constraint);
 
         addTab("Configuration", panel);
     }
@@ -356,6 +360,7 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
             }
 
             try {
+                /* TODO: check that duration is <= 24h if only time is selected (multiple overflows) */
                 Duration startDur = DurationPeriodFormatUtils.parseDuration(m_startTime.getText());
                 config.setStartInterval(startDur);
             } catch (DateTimeParseException e) {
