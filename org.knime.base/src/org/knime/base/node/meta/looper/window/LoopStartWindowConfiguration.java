@@ -58,7 +58,7 @@ import org.knime.time.util.DurationPeriodFormatUtils;
 /**
  * Configuration object to loop start chunking node.
  *
- * @author Bernd Wiswedel, KNIME AG, Zurich, Switzerland
+ * @author Moritz Heine, KNIME GmbH, Konstanz, Germany
  */
 final class LoopStartWindowConfiguration {
 
@@ -79,28 +79,28 @@ final class LoopStartWindowConfiguration {
             TIME
     }
 
-    private WindowDefinition windowDefinition = WindowDefinition.FORWARD;
+    private WindowDefinition m_windowDefinition = WindowDefinition.FORWARD;
 
-    private Trigger trigger = Trigger.EVENT;
+    private Trigger m_trigger = Trigger.EVENT;
 
-    private int stepSize = 1;
+    private int m_stepSize = 1;
 
-    private int windowSize = 1;
+    private int m_windowSize = 1;
 
-    private Duration startInterval;
+    private Duration m_startInterval;
 
-    private Duration windowDuration;
+    private Duration m_windowDuration;
 
-    private boolean limitWindow;
+    private boolean m_limitWindow;
 
     /** @return the window definition */
     WindowDefinition getWindowDefinition() {
-        return windowDefinition;
+        return m_windowDefinition;
     }
 
     /** @return the trigger */
     Trigger getTrigger() {
-        return trigger;
+        return m_trigger;
     }
 
     /**
@@ -112,7 +112,7 @@ final class LoopStartWindowConfiguration {
             throw new InvalidSettingsException("Window definition must not be null");
         }
 
-        windowDefinition = definition;
+        m_windowDefinition = definition;
     }
 
     /**
@@ -124,12 +124,12 @@ final class LoopStartWindowConfiguration {
             throw new InvalidSettingsException("Trigger must not be null");
         }
 
-        this.trigger = trigger;
+        this.m_trigger = trigger;
     }
 
     /** @return the step size. */
     int getStepSize() {
-        return stepSize;
+        return m_stepSize;
     }
 
     /**
@@ -141,12 +141,12 @@ final class LoopStartWindowConfiguration {
             throw new IllegalArgumentException("Step size must be at least 1: " + stepSize);
         }
 
-        this.stepSize = stepSize;
+        this.m_stepSize = stepSize;
     }
 
     /** @return the size of the window. */
     int getWindowSize() {
-        return windowSize;
+        return m_windowSize;
     }
 
     /**
@@ -158,7 +158,7 @@ final class LoopStartWindowConfiguration {
             throw new IllegalArgumentException("Window size must be at least 1: " + windowSize);
         }
 
-        this.windowSize = windowSize;
+        this.m_windowSize = windowSize;
     }
 
     /**
@@ -167,15 +167,15 @@ final class LoopStartWindowConfiguration {
      * @param settings To save to.
      */
     void saveSettingsTo(final NodeSettingsWO settings) {
-        settings.addInt("stepSize", stepSize);
-        settings.addInt("windowSize", windowSize);
-        settings.addString("trigger", trigger.name());
-        settings.addString("windowDefinition", windowDefinition.name());
-        settings.addBoolean("limitWindow", limitWindow);
+        settings.addInt("stepSize", m_stepSize);
+        settings.addInt("windowSize", m_windowSize);
+        settings.addString("trigger", m_trigger.name());
+        settings.addString("windowDefinition", m_windowDefinition.name());
+        settings.addBoolean("limitWindow", m_limitWindow);
 
-        if (startInterval != null) {
-            settings.addString("startDuration", DurationPeriodFormatUtils.formatDurationLong(startInterval));
-            settings.addString("windowDuration", DurationPeriodFormatUtils.formatDurationLong(windowDuration));
+        if (m_startInterval != null) {
+            settings.addString("startDuration", DurationPeriodFormatUtils.formatDurationLong(m_startInterval));
+            settings.addString("windowDuration", DurationPeriodFormatUtils.formatDurationLong(m_windowDuration));
         } else {
             settings.addString("startDuration", null);
             settings.addString("windowDuration", null);
@@ -210,7 +210,7 @@ final class LoopStartWindowConfiguration {
         try {
             setTrigger(Trigger.valueOf(triggerS));
         } catch (IllegalArgumentException iae) {
-            throw new InvalidSettingsException("Invalid trigger: " + trigger);
+            throw new InvalidSettingsException("Invalid trigger: " + m_trigger);
         }
 
         setStepSize(settings.getInt("stepSize"));
@@ -218,18 +218,18 @@ final class LoopStartWindowConfiguration {
 
         try {
             if (settings.getString("startDuration") != null) {
-                startInterval = DurationPeriodFormatUtils.parseDuration(settings.getString("startDuration"));
+                m_startInterval = DurationPeriodFormatUtils.parseDuration(settings.getString("startDuration"));
             }
         } catch (DateTimeParseException e) {
-            startInterval = null;
+            m_startInterval = null;
         }
 
         try {
             if (settings.getString("windowDuration") != null) {
-                windowDuration = DurationPeriodFormatUtils.parseDuration(settings.getString("windowDuration"));
+                m_windowDuration = DurationPeriodFormatUtils.parseDuration(settings.getString("windowDuration"));
             }
         } catch (DateTimeParseException e) {
-            windowDuration = null;
+            m_windowDuration = null;
         }
 
         setLimitWindow(settings.getBoolean("limitWindow", false));
@@ -242,48 +242,48 @@ final class LoopStartWindowConfiguration {
      */
     void loadSettingsInDialog(final NodeSettingsRO settings) {
         try {
-            trigger = Trigger.valueOf(settings.getString("trigger", Trigger.EVENT.name()));
+            m_trigger = Trigger.valueOf(settings.getString("trigger", Trigger.EVENT.name()));
         } catch (IllegalStateException e) {
-            trigger = Trigger.EVENT;
+            m_trigger = Trigger.EVENT;
         }
 
         try {
-            windowDefinition =
+            m_windowDefinition =
                 WindowDefinition.valueOf(settings.getString("windowDefinition", WindowDefinition.FORWARD.name()));
         } catch (IllegalArgumentException iae) {
-            windowDefinition = WindowDefinition.FORWARD;
+            m_windowDefinition = WindowDefinition.FORWARD;
         }
 
         try {
             setStepSize(settings.getInt("stepSize", 1));
         } catch (InvalidSettingsException ise) {
-            stepSize = 1;
+            m_stepSize = 1;
         }
 
         try {
             setWindowSize(settings.getInt("windowSize", 1));
         } catch (InvalidSettingsException e) {
-            windowSize = 1;
+            m_windowSize = 1;
         }
 
         try {
             if (settings.getString("startDuration") != null) {
-                startInterval = DurationPeriodFormatUtils.parseDuration(settings.getString("startDuration"));
+                m_startInterval = DurationPeriodFormatUtils.parseDuration(settings.getString("startDuration"));
             }
         } catch (DateTimeParseException e) {
-            startInterval = null;
+            m_startInterval = null;
         } catch (InvalidSettingsException e) {
-            startInterval = null;
+            m_startInterval = null;
         }
 
         try {
             if (settings.getString("windowDuration") != null) {
-                windowDuration = DurationPeriodFormatUtils.parseDuration(settings.getString("windowDuration"));
+                m_windowDuration = DurationPeriodFormatUtils.parseDuration(settings.getString("windowDuration"));
             }
         } catch (DateTimeParseException e) {
-            windowDuration = null;
+            m_windowDuration = null;
         } catch (InvalidSettingsException e) {
-            windowDuration = null;
+            m_windowDuration = null;
         }
 
         setLimitWindow(settings.getBoolean("limitWindow", false));
@@ -301,11 +301,11 @@ final class LoopStartWindowConfiguration {
      * @param duration of the starting interval.
      */
     void setStartInterval(final Duration duration) {
-        startInterval = duration;
+        m_startInterval = duration;
     }
 
     Duration getStartDuration() {
-        return startInterval;
+        return m_startInterval;
     }
 
     /**
@@ -314,14 +314,14 @@ final class LoopStartWindowConfiguration {
      * @param duration of window.
      */
     void setWindowDuration(final Duration duration) {
-        windowDuration = duration;
+        m_windowDuration = duration;
     }
 
     /**
      * @return duration of the window
      */
     Duration getWindowDuration() {
-        return windowDuration;
+        return m_windowDuration;
     }
 
     /**
@@ -330,14 +330,14 @@ final class LoopStartWindowConfiguration {
      * @param selected {@code true} if the window shall be limited, {@code false} otherwise.
      */
     public void setLimitWindow(final boolean selected) {
-        limitWindow = selected;
+        m_limitWindow = selected;
     }
 
     /**
      * @return {@code true} if window shall be limited to the table
      */
     public boolean getLimitWindow() {
-        return limitWindow;
+        return m_limitWindow;
     }
 
 }

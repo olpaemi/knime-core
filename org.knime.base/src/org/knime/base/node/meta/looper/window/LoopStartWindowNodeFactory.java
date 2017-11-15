@@ -54,7 +54,7 @@ import org.knime.core.node.NodeView;
 /**
  * Factory for the chunking loop start node.
  *
- * @author Bernd Wiswedel, KNIME AG, Zurich, Switzerland
+ * @author Moritz Heine, KNIME GmbH, Konstanz, Germany
  */
 public class LoopStartWindowNodeFactory extends
         NodeFactory<LoopStartWindowNodeModel> {
@@ -63,7 +63,7 @@ public class LoopStartWindowNodeFactory extends
      */
     @Override
     protected NodeDialogPane createNodeDialogPane() {
-        return new LoopStartWindowNodeDialogPane();
+        return new LoopStartWindowNodeDialog();
     }
 
     /**

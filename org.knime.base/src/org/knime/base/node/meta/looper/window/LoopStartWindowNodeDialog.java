@@ -86,77 +86,77 @@ import org.knime.time.util.DurationPeriodFormatUtils;
 /**
  * Dialog pane for the Window Loop Start node.
  *
- * @author Moritz Heine, KNIME.com, Konstanz, Germany
+ * @author Moritz Heine, KNIME GmbH, Konstanz, Germany
  */
-public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
+final class LoopStartWindowNodeDialog extends NodeDialogPane {
 
-    private final JRadioButton forwardRButton;
+    private final JRadioButton m_forwardRButton;
 
-    private final JRadioButton centralRButton;
+    private final JRadioButton m_centralRButton;
 
-    private final JRadioButton backwardRButton;
+    private final JRadioButton m_backwardRButton;
 
-    private final JRadioButton eventTrigRButton;
+    private final JRadioButton m_eventTrigRButton;
 
-    private final JRadioButton timeTrigRButton;
+    private final JRadioButton m_timeTrigRButton;
 
-    private final JSpinner stepSizeSpinner;
+    private final JSpinner m_stepSizeSpinner;
 
-    private final JSpinner windowSizeSpinner;
+    private final JSpinner m_windowSizeSpinner;
 
-    private final JLabel stepSizeLabel;
+    private final JLabel m_stepSizeLabel;
 
-    private final JLabel windowSizeLabel;
+    private final JLabel m_windowSizeLabel;
 
-    private final JLabel windowTimeLabel;
+    private final JLabel m_windowTimeLabel;
 
-    private final JLabel startTimeLabel;
+    private final JLabel m_startTimeLabel;
 
-    private final JTextField timeWindow;
+    private final JTextField m_timeWindow;
 
-    private final JTextField startTime;
+    private final JTextField m_startTime;
 
-    private final JCheckBox limitWindowCheckBox;
+    private final JCheckBox m_limitWindowCheckBox;
 
-    private final DialogComponentColumnNameSelection columnSelector;
+    private final DialogComponentColumnNameSelection m_columnSelector;
 
     /**
      *
      */
-    public LoopStartWindowNodeDialogPane() {
+    public LoopStartWindowNodeDialog() {
         ButtonGroup bg = new ButtonGroup();
 
-        forwardRButton = new JRadioButton("Forward");
-        backwardRButton = new JRadioButton("Backward");
-        centralRButton = new JRadioButton("Central");
+        m_forwardRButton = new JRadioButton("Forward");
+        m_backwardRButton = new JRadioButton("Backward");
+        m_centralRButton = new JRadioButton("Central");
 
-        bg.add(forwardRButton);
-        bg.add(centralRButton);
-        bg.add(backwardRButton);
+        bg.add(m_forwardRButton);
+        bg.add(m_centralRButton);
+        bg.add(m_backwardRButton);
 
         bg = new ButtonGroup();
-        eventTrigRButton = new JRadioButton("Event triggered");
-        timeTrigRButton = new JRadioButton("Time triggered");
+        m_eventTrigRButton = new JRadioButton("Event triggered");
+        m_timeTrigRButton = new JRadioButton("Time triggered");
 
-        bg.add(eventTrigRButton);
-        bg.add(timeTrigRButton);
+        bg.add(m_eventTrigRButton);
+        bg.add(m_timeTrigRButton);
 
-        windowSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 5));
-        stepSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 10));
+        m_windowSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 5));
+        m_stepSizeSpinner = new JSpinner(new SpinnerNumberModel(10, 1, Integer.MAX_VALUE, 10));
 
-        timeWindow = new JTextField();
-        startTime = new JTextField();
+        m_timeWindow = new JTextField();
+        m_startTime = new JTextField();
 
-        stepSizeLabel = new JLabel("Step size");
-        windowSizeLabel = new JLabel("Window size");
+        m_stepSizeLabel = new JLabel("Step size");
+        m_windowSizeLabel = new JLabel("Window size");
 
-        windowTimeLabel = new JLabel("Window time");
-        startTimeLabel = new JLabel("Starting interval");
+        m_windowTimeLabel = new JLabel("Window time");
+        m_startTimeLabel = new JLabel("Starting interval");
 
-        limitWindowCheckBox = new JCheckBox("Limit window to table");
-        limitWindowCheckBox.setSelected(false);
+        m_limitWindowCheckBox = new JCheckBox("Limit window to table");
+        m_limitWindowCheckBox.setSelected(false);
 
-        columnSelector =
+        m_columnSelector =
             new DialogComponentColumnNameSelection(createColumnModel(), "time column", 0, false, DurationValue.class,
                 LocalTimeValue.class, LocalDateTimeValue.class, LocalDateValue.class, ZonedDateTimeValue.class);
 
@@ -165,26 +165,26 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
             @Override
             public void actionPerformed(final ActionEvent e) {
                 /* Time triggered */
-                timeWindow.setEnabled(!eventTrigRButton.isSelected());
-                columnSelector.getModel().setEnabled(!eventTrigRButton.isSelected());
-                startTime.setEnabled(!eventTrigRButton.isSelected());
+                m_timeWindow.setEnabled(!m_eventTrigRButton.isSelected());
+                m_columnSelector.getModel().setEnabled(!m_eventTrigRButton.isSelected());
+                m_startTime.setEnabled(!m_eventTrigRButton.isSelected());
 
                 /* Event triggered */
-                windowSizeSpinner.setEnabled(eventTrigRButton.isSelected());
-                stepSizeSpinner.setEnabled(eventTrigRButton.isSelected());
-                forwardRButton.setEnabled(eventTrigRButton.isSelected());
-                backwardRButton.setEnabled(eventTrigRButton.isSelected());
-                centralRButton.setEnabled(eventTrigRButton.isSelected());
-                limitWindowCheckBox.setEnabled(eventTrigRButton.isSelected());
+                m_windowSizeSpinner.setEnabled(m_eventTrigRButton.isSelected());
+                m_stepSizeSpinner.setEnabled(m_eventTrigRButton.isSelected());
+                m_forwardRButton.setEnabled(m_eventTrigRButton.isSelected());
+                m_backwardRButton.setEnabled(m_eventTrigRButton.isSelected());
+                m_centralRButton.setEnabled(m_eventTrigRButton.isSelected());
+                m_limitWindowCheckBox.setEnabled(m_eventTrigRButton.isSelected());
             }
         };
 
-        eventTrigRButton.addActionListener(triggerListener);
-        timeTrigRButton.addActionListener(triggerListener);
-        limitWindowCheckBox.addActionListener(triggerListener);
+        m_eventTrigRButton.addActionListener(triggerListener);
+        m_timeTrigRButton.addActionListener(triggerListener);
+        m_limitWindowCheckBox.addActionListener(triggerListener);
 
-        forwardRButton.doClick();
-        eventTrigRButton.doClick();
+        m_forwardRButton.doClick();
+        m_eventTrigRButton.doClick();
 
         initLayout();
     }
@@ -212,10 +212,10 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         subConstraint.gridx = 1;
         subConstraint.gridy = 1;
 
-        triggerPanel.add(eventTrigRButton, subConstraint);
+        triggerPanel.add(m_eventTrigRButton, subConstraint);
 
         subConstraint.gridx++;
-        triggerPanel.add(timeTrigRButton, subConstraint);
+        triggerPanel.add(m_timeTrigRButton, subConstraint);
 
         panel.add(triggerPanel, constraint);
 
@@ -225,31 +225,31 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         subConstraint.gridx = 1;
         subConstraint.gridy = 1;
 
-        eventPanel.add(windowSizeLabel, subConstraint);
+        eventPanel.add(m_windowSizeLabel, subConstraint);
 
         subConstraint.gridx++;
-        eventPanel.add(windowSizeSpinner, subConstraint);
+        eventPanel.add(m_windowSizeSpinner, subConstraint);
 
         subConstraint.gridx--;
         subConstraint.gridy++;
-        eventPanel.add(stepSizeLabel, subConstraint);
+        eventPanel.add(m_stepSizeLabel, subConstraint);
 
         subConstraint.gridx++;
-        eventPanel.add(stepSizeSpinner, subConstraint);
+        eventPanel.add(m_stepSizeSpinner, subConstraint);
 
         subConstraint.gridx--;
         subConstraint.gridy++;
-        eventPanel.add(forwardRButton, subConstraint);
+        eventPanel.add(m_forwardRButton, subConstraint);
 
         subConstraint.gridx++;
-        eventPanel.add(centralRButton, subConstraint);
+        eventPanel.add(m_centralRButton, subConstraint);
 
         subConstraint.gridx++;
-        eventPanel.add(backwardRButton, subConstraint);
+        eventPanel.add(m_backwardRButton, subConstraint);
 
         subConstraint.gridx -= 2;
         subConstraint.gridy++;
-        eventPanel.add(limitWindowCheckBox, subConstraint);
+        eventPanel.add(m_limitWindowCheckBox, subConstraint);
 
         eventPanel.setBorder(BorderFactory.createTitledBorder("Event Triggered"));
 
@@ -262,7 +262,7 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         subConstraint.gridx = 1;
         subConstraint.gridy = 1;
 
-        Component[] comp = columnSelector.getComponentPanel().getComponents();
+        Component[] comp = m_columnSelector.getComponentPanel().getComponents();
         timePanel.add(comp[0], subConstraint);
 
         subConstraint.gridx++;
@@ -272,20 +272,20 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         subConstraint.gridx--;
         subConstraint.gridy++;
         subConstraint.fill = GridBagConstraints.NONE;
-        timePanel.add(windowTimeLabel, subConstraint);
+        timePanel.add(m_windowTimeLabel, subConstraint);
 
         subConstraint.gridx++;
         subConstraint.fill = GridBagConstraints.HORIZONTAL;
-        timePanel.add(timeWindow, subConstraint);
+        timePanel.add(m_timeWindow, subConstraint);
 
         subConstraint.gridx--;
         subConstraint.gridy++;
         subConstraint.fill = GridBagConstraints.NONE;
-        timePanel.add(startTimeLabel, subConstraint);
+        timePanel.add(m_startTimeLabel, subConstraint);
 
         subConstraint.gridx++;
         subConstraint.fill = GridBagConstraints.HORIZONTAL;
-        timePanel.add(startTime, subConstraint);
+        timePanel.add(m_startTime, subConstraint);
 
         timePanel.setBorder(BorderFactory.createTitledBorder("Time triggered"));
 
@@ -302,76 +302,76 @@ public class LoopStartWindowNodeDialogPane extends NodeDialogPane {
         LoopStartWindowConfiguration config = new LoopStartWindowConfiguration();
         config.loadSettingsInDialog(settings);
 
-        windowSizeSpinner.setValue(config.getWindowSize());
-        stepSizeSpinner.setValue(config.getStepSize());
-        limitWindowCheckBox.setSelected(config.getLimitWindow());
+        m_windowSizeSpinner.setValue(config.getWindowSize());
+        m_stepSizeSpinner.setValue(config.getStepSize());
+        m_limitWindowCheckBox.setSelected(config.getLimitWindow());
 
         switch (config.getWindowDefinition()) {
             case FORWARD:
-                forwardRButton.doClick();
+                m_forwardRButton.doClick();
                 break;
             case BACKWARD:
-                backwardRButton.doClick();
+                m_backwardRButton.doClick();
                 break;
             default:
-                centralRButton.doClick();
+                m_centralRButton.doClick();
         }
 
         switch (config.getTrigger()) {
             case EVENT:
-                eventTrigRButton.doClick();
+                m_eventTrigRButton.doClick();
                 break;
             default:
-                timeTrigRButton.doClick();
-                startTime.setText(DurationPeriodFormatUtils.formatDurationShort(config.getStartDuration()));
-                timeWindow.setText(DurationPeriodFormatUtils.formatDurationShort(config.getWindowDuration()));
+                m_timeTrigRButton.doClick();
+                m_startTime.setText(DurationPeriodFormatUtils.formatDurationShort(config.getStartDuration()));
+                m_timeWindow.setText(DurationPeriodFormatUtils.formatDurationShort(config.getWindowDuration()));
         }
 
-        columnSelector.loadSettingsFrom(settings, specs);
+        m_columnSelector.loadSettingsFrom(settings, specs);
     }
 
     /** {@inheritDoc} */
     @Override
     protected void saveSettingsTo(final NodeSettingsWO settings) throws InvalidSettingsException {
         LoopStartWindowConfiguration config = new LoopStartWindowConfiguration();
-        config.setWindowSize((Integer)windowSizeSpinner.getValue());
-        config.setStepSize((Integer)stepSizeSpinner.getValue());
-        config.setLimitWindow(limitWindowCheckBox.isSelected());
+        config.setWindowSize((Integer)m_windowSizeSpinner.getValue());
+        config.setStepSize((Integer)m_stepSizeSpinner.getValue());
+        config.setLimitWindow(m_limitWindowCheckBox.isSelected());
 
-        if (forwardRButton.isSelected()) {
+        if (m_forwardRButton.isSelected()) {
             config.setWindowDefinition(WindowDefinition.FORWARD);
-        } else if (backwardRButton.isSelected()) {
+        } else if (m_backwardRButton.isSelected()) {
             config.setWindowDefinition(WindowDefinition.BACKWARD);
         } else {
             config.setWindowDefinition(WindowDefinition.CENTRAL);
         }
 
-        if (eventTrigRButton.isSelected()) {
+        if (m_eventTrigRButton.isSelected()) {
             config.setTrigger(Trigger.EVENT);
         } else {
             config.setTrigger(Trigger.TIME);
 
-            if (columnSelector == null || columnSelector.getSelectedAsSpec() == null) {
+            if (m_columnSelector == null || m_columnSelector.getSelectedAsSpec() == null) {
                 throw new InvalidSettingsException("No valid column has been chosen");
             }
 
             try {
-                Duration startDur = DurationPeriodFormatUtils.parseDuration(startTime.getText());
+                Duration startDur = DurationPeriodFormatUtils.parseDuration(m_startTime.getText());
                 config.setStartInterval(startDur);
             } catch (DateTimeParseException e) {
-                throw new InvalidSettingsException("No valid start duration: " + startTime.getText());
+                throw new InvalidSettingsException("No valid start duration: " + m_startTime.getText());
             }
 
             try {
-                Duration windowDur = DurationPeriodFormatUtils.parseDuration(timeWindow.getText());
+                Duration windowDur = DurationPeriodFormatUtils.parseDuration(m_timeWindow.getText());
                 config.setWindowDuration(windowDur);
             } catch (DateTimeParseException e) {
-                throw new InvalidSettingsException("No valid window duration: " + timeWindow.getText());
+                throw new InvalidSettingsException("No valid window duration: " + m_timeWindow.getText());
             }
         }
 
         config.saveSettingsTo(settings);
-        columnSelector.saveSettingsTo(settings);
+        m_columnSelector.saveSettingsTo(settings);
     }
 
     /**
