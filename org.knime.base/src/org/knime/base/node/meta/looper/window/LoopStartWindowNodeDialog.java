@@ -359,8 +359,8 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
                 break;
             default:
                 m_timeTrigRButton.doClick();
-                m_startTime.setText(DurationPeriodFormatUtils.formatDurationShort(config.getStartDuration()));
-                m_timeWindow.setText(DurationPeriodFormatUtils.formatDurationShort(config.getWindowDuration()));
+                m_startTime.setText(config.getStartDuration());
+                m_timeWindow.setText(config.getWindowDuration());
         }
 
         m_columnSelector.loadSettingsFrom(settings, specs);
@@ -403,13 +403,30 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
                     if (startDur.compareTo(temp) > 0) {
                         throw new InvalidSettingsException(
                             "Starting interval must not be greater than 24h when LocalTime is selected");
+                    } else if (startDur.compareTo(Duration.ZERO) == 0) {
+                        throw new InvalidSettingsException("Starting interval must be greater than 0");
                     }
                 }
 
-                config.setStartInterval(startDur);
+                config.setStartInterval(m_startTime.getText());
             } catch (DateTimeParseException e) {
-                throw e;
-//                throw new InvalidSettingsException("No valid start duration: " + m_startTime.getText());
+                try {
+                    DurationPeriodFormatUtils.parsePeriod(m_startTime.getText());
+
+                    /* Period is not allowed. */
+                    if (m_columnSelector.getSelectedAsSpec().getType().equals(DataType.getType(LocalTimeCell.class))) {
+                        throw new InvalidSettingsException(
+                            "Starting interval: Period types are not allowed for type LocalTime. Note that 'M' is reserved for months, use 'm' for minutes.");
+                    } else if(m_centralRButton.isSelected()) {
+                        throw new InvalidSettingsException(
+                                "Starting interval: Period type is not allowed for central windowing. Note that 'M' is reserved for months, use 'm' for minutes.");
+                    }
+
+                    config.setStartInterval(m_startTime.getText());
+                } catch (DateTimeParseException e2) {
+                    throw new InvalidSettingsException("'" + m_startTime.getText()
+                        + "' is neither a valid Duration nor a Period. Note that 'M' is reserved for months, use 'm' for minutes.");
+                }
             }
 
             try {
@@ -422,13 +439,30 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
                     if (windowDur.compareTo(temp) > 0) {
                         throw new InvalidSettingsException(
                             "Window duration must not be greater than 24h when LocalTime is selected");
+                    } else if(windowDur.compareTo(Duration.ZERO) == 0) {
+                        throw new InvalidSettingsException("Window must be greater than 0");
                     }
                 }
 
-                config.setWindowDuration(windowDur);
+                config.setWindowDuration(m_timeWindow.getText());
             } catch (DateTimeParseException e) {
-                throw e;
-//                throw new InvalidSettingsException("No valid window duration: " + m_timeWindow.getText());
+                try {
+                    DurationPeriodFormatUtils.parsePeriod(m_timeWindow.getText());
+
+                    /* Period is not allowed. */
+                    if (m_columnSelector.getSelectedAsSpec().getType().equals(DataType.getType(LocalTimeCell.class))) {
+                        throw new InvalidSettingsException(
+                            "Window Duration: Period type is not allowed for type LocalTime. Note that 'M' is reserved for months, use 'm' for minutes.");
+                    } else if(m_centralRButton.isSelected()) {
+                        throw new InvalidSettingsException(
+                                "Window Duration: Period type is not allowed for central windowing. Note that 'M' is reserved for months, use 'm' for minutes.");
+                    }
+
+                    config.setWindowDuration(m_timeWindow.getText());
+                } catch (DateTimeParseException e2) {
+                    throw new InvalidSettingsException("'" + m_timeWindow.getText()
+                        + "' is neither a valid Duration nor a Period. Note that 'M' is reserved for months, use 'm' for minutes.");
+                }
             }
         }
 

@@ -47,13 +47,9 @@
  */
 package org.knime.base.node.meta.looper.window;
 
-import java.time.Duration;
-import java.time.format.DateTimeParseException;
-
 import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.NodeSettingsRO;
 import org.knime.core.node.NodeSettingsWO;
-import org.knime.time.util.DurationPeriodFormatUtils;
 
 /**
  * Configuration object to loop start chunking node.
@@ -87,9 +83,9 @@ final class LoopStartWindowConfiguration {
 
     private int m_windowSize = 1;
 
-    private Duration m_startInterval;
+    private String m_startInterval;
 
-    private Duration m_windowDuration;
+    private String m_windowDuration;
 
     private boolean m_limitWindow;
 
@@ -178,8 +174,8 @@ final class LoopStartWindowConfiguration {
         settings.addBoolean("limitWindow", m_limitWindow);
 
         if (m_startInterval != null) {
-            settings.addString("startDuration", DurationPeriodFormatUtils.formatDurationLong(m_startInterval));
-            settings.addString("windowDuration", DurationPeriodFormatUtils.formatDurationLong(m_windowDuration));
+            settings.addString("startDuration", m_startInterval);
+            settings.addString("windowDuration", m_windowDuration);
         } else {
             settings.addString("startDuration", null);
             settings.addString("windowDuration", null);
@@ -223,21 +219,8 @@ final class LoopStartWindowConfiguration {
         setStepSize(settings.getInt("stepSize"));
         setWindowSize(settings.getInt("windowSize"));
 
-        try {
-            if (settings.getString("startDuration") != null) {
-                m_startInterval = DurationPeriodFormatUtils.parseDuration(settings.getString("startDuration"));
-            }
-        } catch (DateTimeParseException e) {
-            m_startInterval = null;
-        }
-
-        try {
-            if (settings.getString("windowDuration") != null) {
-                m_windowDuration = DurationPeriodFormatUtils.parseDuration(settings.getString("windowDuration"));
-            }
-        } catch (DateTimeParseException e) {
-            m_windowDuration = null;
-        }
+        m_startInterval = settings.getString("startDuration", null);
+        m_windowDuration =settings.getString("windowDuration",null);
 
         setLimitWindow(settings.getBoolean("limitWindow", false));
         setUseSpecifiedStartTime(settings.getBoolean("useSpecifiedStartTime", false));
@@ -275,25 +258,9 @@ final class LoopStartWindowConfiguration {
             m_windowSize = 1;
         }
 
-        try {
-            if (settings.getString("startDuration") != null) {
-                m_startInterval = DurationPeriodFormatUtils.parseDuration(settings.getString("startDuration"));
-            }
-        } catch (DateTimeParseException e) {
-            m_startInterval = null;
-        } catch (InvalidSettingsException e) {
-            m_startInterval = null;
-        }
+          m_startInterval = settings.getString("startDuration", null);
+          m_windowDuration = settings.getString("windowDuration", null);
 
-        try {
-            if (settings.getString("windowDuration") != null) {
-                m_windowDuration = DurationPeriodFormatUtils.parseDuration(settings.getString("windowDuration"));
-            }
-        } catch (DateTimeParseException e) {
-            m_windowDuration = null;
-        } catch (InvalidSettingsException e) {
-            m_windowDuration = null;
-        }
 
         setLimitWindow(settings.getBoolean("limitWindow", false));
         setUseSpecifiedStartTime(settings.getBoolean("useSpecifiedStartTime", false));
@@ -311,11 +278,11 @@ final class LoopStartWindowConfiguration {
      *
      * @param duration of the starting interval.
      */
-    void setStartInterval(final Duration duration) {
+    public void setStartInterval(final String duration) {
         m_startInterval = duration;
     }
 
-    Duration getStartDuration() {
+    public String getStartDuration() {
         return m_startInterval;
     }
 
@@ -324,14 +291,14 @@ final class LoopStartWindowConfiguration {
      *
      * @param duration of window.
      */
-    void setWindowDuration(final Duration duration) {
+    public void setWindowDuration(final String duration) {
         m_windowDuration = duration;
     }
 
     /**
      * @return duration of the window
      */
-    Duration getWindowDuration() {
+    public String getWindowDuration() {
         return m_windowDuration;
     }
 

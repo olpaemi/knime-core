@@ -49,12 +49,16 @@ package org.knime.base.node.meta.looper.window;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.Period;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.Temporal;
+import java.time.temporal.TemporalAmount;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -84,6 +88,7 @@ import org.knime.core.node.NodeSettingsWO;
 import org.knime.core.node.defaultnodesettings.SettingsModelString;
 import org.knime.core.node.workflow.LoopStartNodeTerminator;
 import org.knime.time.util.DateTimeUtils;
+import org.knime.time.util.DurationPeriodFormatUtils;
 
 /**
  * Loop start node that outputs a set of rows at a time. Used to implement a streaming (or chunking approach) where only
@@ -153,20 +158,55 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
                     "Selected time column '" + m_timeColumnName + "' does not exist in input table.");
             }
 
+            DataColumnSpec columnSpec = tableSpec.getColumnSpec(m_timeColumnName);
+
             /* Check if the cells have the same type as the specified start time. */
             if (m_windowConfig.useSpecifiedStartTime()) {
-                DataColumnSpec columnSpec = tableSpec.getColumnSpec(m_timeColumnName);
-
-                Temporal specifiedStartTime = getSpecifiedStartTime(columnSpec, m_windowConfig.getSpecifiedStartTime());
+                Temporal specifiedStartTime = getSpecifiedStartTime(columnSpec, m_windowConfig.getSpecifiedStartTime(), false);
 
                 if (specifiedStartTime == null) {
                     throw new InvalidSettingsException(
                         "Specified start time is not compatible with selected time column '" + m_timeColumnName + "'");
                 }
             }
+
+            /* Check if period is set for LocalTime */
+            TemporalAmount start = getTemporalAmount(m_windowConfig.getStartDuration());
+            if(start == null) {
+                throw new InvalidSettingsException("No starting interval set.");
+            } else  if(start instanceof Period && columnSpec.getType().equals(DataType.getType(LocalTimeCell.class))) {
+                    throw new InvalidSettingsException("Starting inverval: Period type not allowed for LocalTime");
+            }
+
+            TemporalAmount window = getTemporalAmount(m_windowConfig.getWindowDuration());
+            if(window == null) {
+                throw new InvalidSettingsException("No window duration set.");
+            } else if(start instanceof Period && columnSpec.getType().equals(DataType.getType(LocalTimeCell.class))) {
+                throw new InvalidSettingsException("Window duration: Period type not allowed for LocalTime");
+            }
         }
 
         return inSpecs;
+    }
+
+    /**
+     * Gets the temporal amount from the given string which can be either a Duration or a Period.
+     *
+     * @param amount string that shall be parsed
+     * @return TemporalAmount of the string or {@code null} if it cannot be parsed to Duration or Period.
+     */
+    private TemporalAmount getTemporalAmount(final String amount) {
+        try {
+            return DurationPeriodFormatUtils.parseDuration(amount);
+        } catch (DateTimeParseException e) {
+            try {
+                return DurationPeriodFormatUtils.parsePeriod(amount);
+            } catch (DateTimeException e2) {
+
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -176,7 +216,7 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
      * @param specifiedStartString specified start temporal
      * @return specified start temporal if string can be parsed, {@code null} otherwise.
      */
-    private Temporal getSpecifiedStartTime(final DataColumnSpec columnSpec, final String specifiedStartString) {
+    private Temporal getSpecifiedStartTime(final DataColumnSpec columnSpec, final String specifiedStartString, final boolean convertLocalDate) {
         if (columnSpec.getType().equals(DataType.getType(LocalTimeCell.class))) {
             Optional<LocalTime> opt = DateTimeUtils.asLocalTime(specifiedStartString);
 
@@ -201,8 +241,16 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
             }
         }
 
-        if (columnSpec.getType().equals(DataType.getType(LocalDateCell.class))) {
+        if (columnSpec.getType().equals(DataType.getType(LocalDateCell.class)) && !convertLocalDate) {
             Optional<LocalDate> opt = DateTimeUtils.asLocalDate(specifiedStartString);
+
+            if (opt.isPresent()) {
+                return opt.get();
+            }
+        }
+
+        if (columnSpec.getType().equals(DataType.getType(LocalDateCell.class))) {
+            Optional<LocalDateTime> opt = DateTimeUtils.asLocalDateTime(specifiedStartString+"T00:00:00");
 
             if (opt.isPresent()) {
                 return opt.get();
@@ -273,8 +321,8 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
     private BufferedDataTable[] executeTemporalForward(final BufferedDataTable table, final ExecutionContext exec) {
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
         int column = table.getDataTableSpec().findColumnIndex(m_timeColumnName);
-        Duration startInterval = m_windowConfig.getStartDuration();
-        Duration windowDuration = m_windowConfig.getWindowDuration();
+        TemporalAmount startInterval = getTemporalAmount(m_windowConfig.getStartDuration());
+        TemporalAmount windowDuration = getTemporalAmount(m_windowConfig.getWindowDuration());
 
         /* To check if an overflow occurred concerning the current window */
         boolean overflow = false;
@@ -306,7 +354,7 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
             /* Check if user specified start shall be used. */
             if (m_windowConfig.useSpecifiedStartTime()) {
                 firstStart = getSpecifiedStartTime(table.getDataTableSpec().getColumnSpec(column),
-                    m_windowConfig.getSpecifiedStartTime());
+                    m_windowConfig.getSpecifiedStartTime(), true);
 
                 /* Current start temporal, m_nextStartTemporal is used to re-use the skipTemporalWindow method. */
                 m_nextStartTemporal = firstStart;
@@ -511,8 +559,8 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
     private BufferedDataTable[] executeTemporalBackward(final BufferedDataTable table, final ExecutionContext exec) {
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
         int column = table.getDataTableSpec().findColumnIndex(m_timeColumnName);
-        Duration startInterval = m_windowConfig.getStartDuration();
-        Duration windowDuration = m_windowConfig.getWindowDuration();
+        TemporalAmount startInterval = getTemporalAmount(m_windowConfig.getStartDuration());
+        TemporalAmount windowDuration = getTemporalAmount(m_windowConfig.getWindowDuration());
 
         /* To check if an overflow occurred concerning the current window */
         boolean overflow = false;
@@ -543,7 +591,7 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
             /* Check if user specified start shall be used. */
             if (m_windowConfig.useSpecifiedStartTime()) {
                 firstEnd = getSpecifiedStartTime(table.getDataTableSpec().getColumnSpec(column),
-                    m_windowConfig.getSpecifiedStartTime());
+                    m_windowConfig.getSpecifiedStartTime(), true);
 
                 /* Move the window until the current end is greater or equal than the first row. */
                 while (compareTemporal(getTemporal(first.getCell(column)), firstEnd) > 0) {
@@ -764,8 +812,8 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
     private BufferedDataTable[] executeTemporalCentral(final BufferedDataTable table, final ExecutionContext exec) {
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
         int column = table.getDataTableSpec().findColumnIndex(m_timeColumnName);
-        Duration startInterval = m_windowConfig.getStartDuration();
-        Duration windowDuration = m_windowConfig.getWindowDuration();
+        Duration startInterval = (Duration)getTemporalAmount(m_windowConfig.getStartDuration());
+        Duration windowDuration = (Duration)getTemporalAmount(m_windowConfig.getWindowDuration());
 
         /* To check if an overflow occurred concerning the current window */
         boolean overflow = false;
@@ -797,7 +845,7 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
             /* Check if user specified start shall be used. */
             if (m_windowConfig.useSpecifiedStartTime()) {
                 firstStart = getSpecifiedStartTime(table.getDataTableSpec().getColumnSpec(column),
-                    m_windowConfig.getSpecifiedStartTime());
+                    m_windowConfig.getSpecifiedStartTime(), true);
 
                 Temporal firstEnd = firstStart.plus(windowDuration.dividedBy(2));
 
@@ -853,8 +901,6 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
                 Temporal tempNextEnd = m_windowEndTemporal.plus(startInterval);
                 Temporal tempNextStart = tempNextEnd.minus(windowDuration);
                 Temporal tempNextMid = tempNextEnd.minus(windowDuration.dividedBy(2));
-
-
 
                 /* Check if the current window is the last window. */
                 boolean nextEndOverflow = compareTemporal(tempNextEnd, m_windowEndTemporal) <= 0;
@@ -1043,8 +1089,8 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
      * @param startInterval starting interval of the windows.
      * @param windowDuration duration of the window.
      */
-    private void skipTemporalWindow(DataRow row, final int column, final Duration startInterval,
-        final Duration windowDuration) {
+    private void skipTemporalWindow(DataRow row, final int column, final TemporalAmount startInterval,
+        final TemporalAmount windowDuration) {
         while (row != null) {
             /* Check if current row lies beyond next starting temporal. */
             while (compareTemporal(getTemporal(row.getCell(column)), m_nextStartTemporal) < 0
@@ -1071,7 +1117,7 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
                     case CENTRAL:
                         /* Check if currently considered time point lies before the overflow. */
                         if (compareTemporal(m_nextStartTemporal.plus(windowDuration),
-                            getMin(m_nextStartTemporal).plus(windowDuration.dividedBy(2))) < 0) {
+                            getMin(m_nextStartTemporal).plus(((Duration)windowDuration).dividedBy(2))) < 0) {
                             m_bufferedRows.addFirst(row);
                         }
                         break;
