@@ -54,7 +54,12 @@ import java.awt.Insets;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.Optional;
 
 import javax.swing.BorderFactory;
 import javax.swing.ButtonGroup;
@@ -69,9 +74,13 @@ import javax.swing.SpinnerNumberModel;
 import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.Trigger;
 import org.knime.base.node.meta.looper.window.LoopStartWindowConfiguration.WindowDefinition;
 import org.knime.core.data.DataTableSpec;
+import org.knime.core.data.DataType;
 import org.knime.core.data.time.localdate.LocalDateValue;
+import org.knime.core.data.time.localdatetime.LocalDateTimeCell;
 import org.knime.core.data.time.localdatetime.LocalDateTimeValue;
+import org.knime.core.data.time.localtime.LocalTimeCell;
 import org.knime.core.data.time.localtime.LocalTimeValue;
+import org.knime.core.data.time.zoneddatetime.ZonedDateTimeCell;
 import org.knime.core.data.time.zoneddatetime.ZonedDateTimeValue;
 import org.knime.core.node.InvalidSettingsException;
 import org.knime.core.node.NodeDialogPane;
@@ -79,7 +88,7 @@ import org.knime.core.node.NodeSettingsRO;
 import org.knime.core.node.NodeSettingsWO;
 import org.knime.core.node.NotConfigurableException;
 import org.knime.core.node.defaultnodesettings.DialogComponentColumnNameSelection;
-import org.knime.core.node.defaultnodesettings.SettingsModelString;
+import org.knime.time.util.DateTimeUtils;
 import org.knime.time.util.DurationPeriodFormatUtils;
 
 /**
@@ -116,6 +125,10 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
     private final JTextField m_startTime;
 
     private final JCheckBox m_limitWindowCheckBox;
+
+    private final JCheckBox m_useSpecifiedStartTimeCheckBox;
+
+    private final JTextField m_specifiedStartTime;
 
     private final DialogComponentColumnNameSelection m_columnSelector;
 
@@ -155,8 +168,15 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
         m_limitWindowCheckBox = new JCheckBox("Limit window to table");
         m_limitWindowCheckBox.setSelected(false);
 
-        m_columnSelector = new DialogComponentColumnNameSelection(createColumnModel(), "time column", 0, false,
-            LocalTimeValue.class, LocalDateTimeValue.class, LocalDateValue.class, ZonedDateTimeValue.class);
+        m_useSpecifiedStartTimeCheckBox = new JCheckBox("Start at:");
+        m_useSpecifiedStartTimeCheckBox.setSelected(false);
+
+        m_specifiedStartTime = new JTextField();
+        m_specifiedStartTime.setEnabled(false);
+
+        m_columnSelector =
+            new DialogComponentColumnNameSelection(LoopStartWindowNodeModel.createColumnModel(), "time column", 0,
+                false, LocalTimeValue.class, LocalDateTimeValue.class, LocalDateValue.class, ZonedDateTimeValue.class);
 
         ActionListener triggerListener = new ActionListener() {
 
@@ -166,13 +186,13 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
                 m_timeWindow.setEnabled(!m_eventTrigRButton.isSelected());
                 m_columnSelector.getModel().setEnabled(!m_eventTrigRButton.isSelected());
                 m_startTime.setEnabled(!m_eventTrigRButton.isSelected());
+                m_useSpecifiedStartTimeCheckBox.setEnabled(!m_eventTrigRButton.isSelected());
+                m_specifiedStartTime
+                    .setEnabled(!m_eventTrigRButton.isSelected() && m_useSpecifiedStartTimeCheckBox.isSelected());
 
                 /* Event triggered */
                 m_windowSizeSpinner.setEnabled(m_eventTrigRButton.isSelected());
                 m_stepSizeSpinner.setEnabled(m_eventTrigRButton.isSelected());
-                //                m_forwardRButton.setEnabled(m_eventTrigRButton.isSelected());
-                //                m_backwardRButton.setEnabled(m_eventTrigRButton.isSelected());
-                //                m_centralRButton.setEnabled(m_eventTrigRButton.isSelected());
                 m_limitWindowCheckBox.setEnabled(m_eventTrigRButton.isSelected());
             }
         };
@@ -180,6 +200,7 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
         m_eventTrigRButton.addActionListener(triggerListener);
         m_timeTrigRButton.addActionListener(triggerListener);
         m_limitWindowCheckBox.addActionListener(triggerListener);
+        m_useSpecifiedStartTimeCheckBox.addActionListener(triggerListener);
 
         m_forwardRButton.doClick();
         m_eventTrigRButton.doClick();
@@ -275,6 +296,15 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
         subConstraint.fill = GridBagConstraints.HORIZONTAL;
         timePanel.add(m_startTime, subConstraint);
 
+        subConstraint.gridx--;
+        subConstraint.gridy++;
+        subConstraint.fill = GridBagConstraints.NONE;
+        timePanel.add(m_useSpecifiedStartTimeCheckBox, subConstraint);
+
+        subConstraint.gridx++;
+        subConstraint.fill = GridBagConstraints.HORIZONTAL;
+        timePanel.add(m_specifiedStartTime, subConstraint);
+
         timePanel.setBorder(BorderFactory.createTitledBorder("Time triggered"));
 
         constraint.gridy++;
@@ -309,6 +339,8 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
         m_windowSizeSpinner.setValue(config.getWindowSize());
         m_stepSizeSpinner.setValue(config.getStepSize());
         m_limitWindowCheckBox.setSelected(config.getLimitWindow());
+        m_useSpecifiedStartTimeCheckBox.setSelected(config.useSpecifiedStartTime());
+        m_specifiedStartTime.setText(config.getSpecifiedStartTime());
 
         switch (config.getWindowDefinition()) {
             case FORWARD:
@@ -337,6 +369,8 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
     /** {@inheritDoc} */
     @Override
     protected void saveSettingsTo(final NodeSettingsWO settings) throws InvalidSettingsException {
+        /* TODO: only allow duration > 0*/
+
         LoopStartWindowConfiguration config = new LoopStartWindowConfiguration();
         config.setWindowSize((Integer)m_windowSizeSpinner.getValue());
         config.setStepSize((Integer)m_stepSizeSpinner.getValue());
@@ -360,19 +394,49 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
             }
 
             try {
-                /* TODO: check that duration is <= 24h if only time is selected (multiple overflows) */
                 Duration startDur = DurationPeriodFormatUtils.parseDuration(m_startTime.getText());
+
+                /* Limit window to 24h */
+                if (m_columnSelector.getSelectedAsSpec().getType().equals(DataType.getType(LocalTimeCell.class))) {
+                    Duration temp = Duration.ofHours(24);
+
+                    if (startDur.compareTo(temp) > 0) {
+                        throw new InvalidSettingsException(
+                            "Starting interval must not be greater than 24h when LocalTime is selected");
+                    }
+                }
+
                 config.setStartInterval(startDur);
             } catch (DateTimeParseException e) {
-                throw new InvalidSettingsException("No valid start duration: " + m_startTime.getText());
+                throw e;
+//                throw new InvalidSettingsException("No valid start duration: " + m_startTime.getText());
             }
 
             try {
                 Duration windowDur = DurationPeriodFormatUtils.parseDuration(m_timeWindow.getText());
+
+                /* Limit window to 24h */
+                if (m_columnSelector.getSelectedAsSpec().getType().equals(DataType.getType(LocalTimeCell.class))) {
+                    Duration temp = Duration.ofHours(24);
+
+                    if (windowDur.compareTo(temp) > 0) {
+                        throw new InvalidSettingsException(
+                            "Window duration must not be greater than 24h when LocalTime is selected");
+                    }
+                }
+
                 config.setWindowDuration(windowDur);
             } catch (DateTimeParseException e) {
-                throw new InvalidSettingsException("No valid window duration: " + m_timeWindow.getText());
+                throw e;
+//                throw new InvalidSettingsException("No valid window duration: " + m_timeWindow.getText());
             }
+        }
+
+        config.setUseSpecifiedStartTime(m_useSpecifiedStartTimeCheckBox.isSelected());
+
+        if (m_useSpecifiedStartTimeCheckBox.isSelected()) {
+            checkStartTimeType();
+            config.setSpecifiedStartTime(m_specifiedStartTime.getText());
         }
 
         config.saveSettingsTo(settings);
@@ -380,10 +444,40 @@ final class LoopStartWindowNodeDialog extends NodeDialogPane {
     }
 
     /**
-     * @return settings model for column selection
+     * Checks if the given start time can be parsed as the same type the selected column has.
+     *
+     * @throws InvalidSettingsException if the given start time cannot be parsed.
+     *
      */
-    static final SettingsModelString createColumnModel() {
-        return new SettingsModelString("selectedTimeColumn", null);
-    }
+    private void checkStartTimeType() throws InvalidSettingsException {
+        if (m_columnSelector.getSelectedAsSpec().getType().equals(DataType.getType(LocalTimeCell.class))) {
+            Optional<LocalTime> opt = DateTimeUtils.asLocalTime(m_specifiedStartTime.getText());
 
+            if (!opt.isPresent()) {
+                throw new InvalidSettingsException(
+                    "Specified start time '" + m_specifiedStartTime.getText() + "' cannot be parsed as LocalTime");
+            }
+        } else if (m_columnSelector.getSelectedAsSpec().getType().equals(DataType.getType(ZonedDateTimeCell.class))) {
+            Optional<ZonedDateTime> opt = DateTimeUtils.asZonedDateTime(m_specifiedStartTime.getText());
+
+            if (!opt.isPresent()) {
+                throw new InvalidSettingsException(
+                    "Specified start time '" + m_specifiedStartTime.getText() + "' cannot be parsed as ZonedDateTime");
+            }
+        } else if (m_columnSelector.getSelectedAsSpec().getType().equals(DataType.getType(LocalDateTimeCell.class))) {
+            Optional<LocalDateTime> opt = DateTimeUtils.asLocalDateTime(m_specifiedStartTime.getText());
+
+            if (!opt.isPresent()) {
+                throw new InvalidSettingsException(
+                    "Specified start time '" + m_specifiedStartTime.getText() + "' cannot be parsed to LocalDateTime");
+            }
+        } else {
+            Optional<LocalDate> opt = DateTimeUtils.asLocalDate(m_specifiedStartTime.getText());
+
+            if (!opt.isPresent()) {
+                throw new InvalidSettingsException(
+                    "Specified start time '" + m_specifiedStartTime.getText() + "' cannot be parsed to LocalDate");
+            }
+        }
+    }
 }

@@ -93,6 +93,10 @@ final class LoopStartWindowConfiguration {
 
     private boolean m_limitWindow;
 
+    private String m_specifiedStartTime;
+
+    private boolean m_useSpecifiedStartTime;
+
     /** @return the window definition */
     WindowDefinition getWindowDefinition() {
         return m_windowDefinition;
@@ -180,6 +184,9 @@ final class LoopStartWindowConfiguration {
             settings.addString("startDuration", null);
             settings.addString("windowDuration", null);
         }
+
+        settings.addBoolean("useSpecifiedStartTime", m_useSpecifiedStartTime);
+        settings.addString("specifiedStartTime", m_specifiedStartTime);
     }
 
     /**
@@ -233,6 +240,8 @@ final class LoopStartWindowConfiguration {
         }
 
         setLimitWindow(settings.getBoolean("limitWindow", false));
+        setUseSpecifiedStartTime(settings.getBoolean("useSpecifiedStartTime", false));
+        setSpecifiedStartTime(settings.getString("specifiedStartTime", null));
     }
 
     /**
@@ -287,6 +296,8 @@ final class LoopStartWindowConfiguration {
         }
 
         setLimitWindow(settings.getBoolean("limitWindow", false));
+        setUseSpecifiedStartTime(settings.getBoolean("useSpecifiedStartTime", false));
+        setSpecifiedStartTime(settings.getString("specifiedStartTime", null));
     }
 
     /** {@inheritDoc} */
@@ -340,4 +351,33 @@ final class LoopStartWindowConfiguration {
         return m_limitWindow;
     }
 
+    /**
+     * @param specifiedStartTime specified start time that shall be used.
+     */
+    public void setSpecifiedStartTime(final String specifiedStartTime) {
+        m_specifiedStartTime = specifiedStartTime;
+    }
+
+    /**
+     * @param useSpecifiedTime {@code true} if the specified start time shall be used, {@code false} otherwise.
+     */
+    public void setUseSpecifiedStartTime(final boolean useSpecifiedTime) {
+        this.m_useSpecifiedStartTime = useSpecifiedTime;
+
+    }
+
+    /**
+     * @return specified start time.
+     */
+    public String getSpecifiedStartTime() {
+        return m_specifiedStartTime;
+    }
+
+    /**
+     * @return {@code true} if specified start time shall be used, {@code false} otherwise.
+     */
+    public boolean useSpecifiedStartTime() {
+        // TODO Auto-generated method stub
+        return m_useSpecifiedStartTime;
+    }
 }
