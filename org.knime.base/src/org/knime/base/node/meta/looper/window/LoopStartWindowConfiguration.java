@@ -75,23 +75,94 @@ final class LoopStartWindowConfiguration {
             TIME
     }
 
+    enum Unit {
+            NO_UNIT("duration / period", ""), MILLISECONDS("millisecond(s)", "ms"), SECONDS("second(s)", "s"),
+            MINUTES("minute(s)", "m"), HOURS("hour(s)", "h"), DAYS("day(s)", "d"), MONTHS("month(s)", "M"),
+            YEARS("year(s)", "y");
+
+        private String m_name;
+
+        private String m_unitLetter;
+
+        private Unit(final String name, final String unitLetter) {
+            this.m_name = name;
+            this.m_unitLetter = unitLetter;
+        }
+
+        /**
+         * @return the letter representing the unit.
+         */
+        public String getUnitLetter() {
+            return m_unitLetter;
+        }
+
+        /**
+         * Gets the unit from the specific string
+         *
+         * @param unitName name of the unit
+         * @return the unit if the given name is valid. {@code NO_UNIT} if the given name does not correspond to any
+         *         unit.
+         */
+        public static Unit getUnit(final String unitName) {
+            for (Unit unit : Unit.values()) {
+                if (unit.toString().equals(unitName)) {
+                    return unit;
+                }
+            }
+
+            return NO_UNIT;
+        }
+
+        @Override
+        public String toString() {
+            return m_name;
+        }
+    }
+
     private WindowDefinition m_windowDefinition = WindowDefinition.FORWARD;
 
     private Trigger m_trigger = Trigger.EVENT;
 
-    private int m_stepSize = 1;
+    private int m_eventStepSize = 1;
 
-    private int m_windowSize = 1;
+    private int m_eventWindowSize = 1;
 
-    private String m_startInterval;
+    private String m_timeStepSize;
 
-    private String m_windowDuration;
+    private String m_timeWindowSize;
 
     private boolean m_limitWindow;
 
     private String m_specifiedStartTime;
 
     private boolean m_useSpecifiedStartTime;
+
+    private Unit m_timeWindowUnit;
+
+    private Unit m_timeStepUnit;
+
+    /* Start of the keys used to save and load the settings. */
+    private final String m_windowDefinitionKey = "windowDefinition";
+
+    private final String m_triggerKey = "trigger";
+
+    private final String m_evenStepSizeKey = "eventStepSize";
+
+    private final String m_eventWindowSizeKey = "eventWindowSize";
+
+    private final String m_timeStepSizeKey = "timeStepSize";
+
+    private final String m_timeWindowSizeKey = "timeWindowSize";
+
+    private final String m_limitWindowKey = "limitWindow";
+
+    private final String m_specifiedStartTimeKey = "specifiedStartTime";
+
+    private final String m_useSpecifiedStartTimeKey = "useSpecifiedStartTime";
+
+    private final String m_timeWindowUnitKey = "timeWindowUnit";
+
+    private final String m_timeStepUnitKey = "timeStepUnit";
 
     /** @return the window definition */
     WindowDefinition getWindowDefinition() {
@@ -128,37 +199,37 @@ final class LoopStartWindowConfiguration {
     }
 
     /** @return the step size. */
-    int getStepSize() {
-        return m_stepSize;
+    int getEventStepSize() {
+        return m_eventStepSize;
     }
 
     /**
      * @param stepSize the stepSize to set
      * @throws InvalidSettingsException If argument &lt; 1
      */
-    void setStepSize(final int stepSize) throws InvalidSettingsException {
+    void setEventStepSize(final int stepSize) throws InvalidSettingsException {
         if (stepSize < 1) {
             throw new IllegalArgumentException("Step size must be at least 1: " + stepSize);
         }
 
-        this.m_stepSize = stepSize;
+        this.m_eventStepSize = stepSize;
     }
 
     /** @return the size of the window. */
-    int getWindowSize() {
-        return m_windowSize;
+    int getEventWindowSize() {
+        return m_eventWindowSize;
     }
 
     /**
      * @param windowSize the size of window to set
      * @throws InvalidSettingsException If argument &lt; 1
      */
-    void setWindowSize(final int windowSize) throws InvalidSettingsException {
+    void setEventWindowSize(final int windowSize) throws InvalidSettingsException {
         if (windowSize < 1) {
             throw new IllegalArgumentException("Window size must be at least 1: " + windowSize);
         }
 
-        this.m_windowSize = windowSize;
+        this.m_eventWindowSize = windowSize;
     }
 
     /**
@@ -167,22 +238,27 @@ final class LoopStartWindowConfiguration {
      * @param settings To save to.
      */
     void saveSettingsTo(final NodeSettingsWO settings) {
-        settings.addInt("stepSize", m_stepSize);
-        settings.addInt("windowSize", m_windowSize);
-        settings.addString("trigger", m_trigger.name());
-        settings.addString("windowDefinition", m_windowDefinition.name());
-        settings.addBoolean("limitWindow", m_limitWindow);
+        settings.addInt(m_evenStepSizeKey, m_eventStepSize);
+        settings.addInt(m_eventWindowSizeKey, m_eventWindowSize);
+        settings.addString(m_triggerKey, m_trigger.name());
+        settings.addString(m_windowDefinitionKey, m_windowDefinition.name());
+        settings.addBoolean(m_limitWindowKey, m_limitWindow);
 
-        if (m_startInterval != null) {
-            settings.addString("startDuration", m_startInterval);
-            settings.addString("windowDuration", m_windowDuration);
+        if (m_timeStepSize != null) {
+            settings.addString(m_timeStepSizeKey, m_timeStepSize);
+            settings.addString(m_timeWindowSizeKey, m_timeWindowSize);
         } else {
-            settings.addString("startDuration", null);
-            settings.addString("windowDuration", null);
+            settings.addString(m_timeStepSizeKey, null);
+            settings.addString(m_timeWindowSizeKey, null);
         }
 
-        settings.addBoolean("useSpecifiedStartTime", m_useSpecifiedStartTime);
-        settings.addString("specifiedStartTime", m_specifiedStartTime);
+        settings.addBoolean(m_useSpecifiedStartTimeKey, m_useSpecifiedStartTime);
+        settings.addString(m_specifiedStartTimeKey, m_specifiedStartTime);
+
+        if (m_timeWindowUnit != null) {
+            settings.addString(m_timeWindowUnitKey, m_timeWindowUnit.toString());
+            settings.addString(m_timeStepUnitKey, m_timeStepUnit.toString());
+        }
     }
 
     /**
@@ -192,39 +268,31 @@ final class LoopStartWindowConfiguration {
      * @throws InvalidSettingsException If invalid.
      */
     void loadSettingsInModel(final NodeSettingsRO settings) throws InvalidSettingsException {
-        String defWindowS = settings.getString("windowDefinition");
-
-        if (defWindowS == null) {
-            defWindowS = WindowDefinition.FORWARD.name();
+        try {
+            setWindowDefinition(WindowDefinition.valueOf(settings.getString(m_windowDefinitionKey)));
+        } catch (Exception e) {
+            throw new InvalidSettingsException(
+                "Invalid window definition: " + settings.getString(m_windowDefinitionKey));
         }
 
         try {
-            setWindowDefinition(WindowDefinition.valueOf(defWindowS));
-        } catch (IllegalArgumentException iae) {
-            throw new InvalidSettingsException("Invalid window definition: " + defWindowS);
+            setTrigger(Trigger.valueOf(settings.getString(m_triggerKey)));
+        } catch (Exception e) {
+            throw new InvalidSettingsException("Invalid trigger: " + settings.getString(m_triggerKey));
         }
 
-        String triggerS = settings.getString("trigger");
+        setEventStepSize(settings.getInt(m_evenStepSizeKey));
+        setEventWindowSize(settings.getInt(m_eventWindowSizeKey));
 
-        if (triggerS == null) {
-            triggerS = Trigger.EVENT.name();
-        }
+        setTimeStepSize(settings.getString(m_timeStepSizeKey));
+        setTimeWindowSize(settings.getString(m_timeWindowSizeKey));
 
-        try {
-            setTrigger(Trigger.valueOf(triggerS));
-        } catch (IllegalArgumentException iae) {
-            throw new InvalidSettingsException("Invalid trigger: " + m_trigger);
-        }
+        setTimeStepUnit(Unit.getUnit(settings.getString(m_timeStepUnitKey, null)));
+        m_timeWindowUnit = Unit.getUnit(settings.getString(m_timeWindowUnitKey, null));
 
-        setStepSize(settings.getInt("stepSize"));
-        setWindowSize(settings.getInt("windowSize"));
-
-        m_startInterval = settings.getString("startDuration", null);
-        m_windowDuration =settings.getString("windowDuration",null);
-
-        setLimitWindow(settings.getBoolean("limitWindow", false));
-        setUseSpecifiedStartTime(settings.getBoolean("useSpecifiedStartTime", false));
-        setSpecifiedStartTime(settings.getString("specifiedStartTime", null));
+        setLimitWindow(settings.getBoolean(m_limitWindowKey, false));
+        setUseSpecifiedStartTime(settings.getBoolean(m_useSpecifiedStartTimeKey, false));
+        setSpecifiedStartTime(settings.getString(m_specifiedStartTimeKey, null));
     }
 
     /**
@@ -234,37 +302,39 @@ final class LoopStartWindowConfiguration {
      */
     void loadSettingsInDialog(final NodeSettingsRO settings) {
         try {
-            m_trigger = Trigger.valueOf(settings.getString("trigger", Trigger.EVENT.name()));
+            m_trigger = Trigger.valueOf(settings.getString(m_triggerKey, Trigger.EVENT.name()));
         } catch (IllegalStateException e) {
             m_trigger = Trigger.EVENT;
         }
 
         try {
             m_windowDefinition =
-                WindowDefinition.valueOf(settings.getString("windowDefinition", WindowDefinition.FORWARD.name()));
+                WindowDefinition.valueOf(settings.getString(m_windowDefinitionKey, WindowDefinition.FORWARD.name()));
         } catch (IllegalArgumentException iae) {
             m_windowDefinition = WindowDefinition.FORWARD;
         }
 
         try {
-            setStepSize(settings.getInt("stepSize", 1));
+            setEventStepSize(settings.getInt(m_evenStepSizeKey, 1));
         } catch (InvalidSettingsException ise) {
-            m_stepSize = 1;
+            m_eventStepSize = 1;
         }
 
         try {
-            setWindowSize(settings.getInt("windowSize", 1));
+            setEventWindowSize(settings.getInt(m_eventWindowSizeKey, 1));
         } catch (InvalidSettingsException e) {
-            m_windowSize = 1;
+            m_eventWindowSize = 1;
         }
 
-          m_startInterval = settings.getString("startDuration", null);
-          m_windowDuration = settings.getString("windowDuration", null);
+        m_timeStepSize = settings.getString(m_timeStepSizeKey, null);
+        m_timeWindowSize = settings.getString(m_timeWindowSizeKey, null);
 
+        m_timeStepUnit = Unit.getUnit(settings.getString(m_timeStepUnitKey, null));
+        m_timeWindowUnit = Unit.getUnit(settings.getString(m_timeWindowUnitKey, null));
 
-        setLimitWindow(settings.getBoolean("limitWindow", false));
-        setUseSpecifiedStartTime(settings.getBoolean("useSpecifiedStartTime", false));
-        setSpecifiedStartTime(settings.getString("specifiedStartTime", null));
+        setLimitWindow(settings.getBoolean(m_limitWindowKey, false));
+        setUseSpecifiedStartTime(settings.getBoolean(m_useSpecifiedStartTimeKey, false));
+        setSpecifiedStartTime(settings.getString(m_specifiedStartTimeKey, null));
     }
 
     /** {@inheritDoc} */
@@ -278,12 +348,15 @@ final class LoopStartWindowConfiguration {
      *
      * @param duration of the starting interval.
      */
-    public void setStartInterval(final String duration) {
-        m_startInterval = duration;
+    public void setTimeStepSize(final String duration) {
+        m_timeStepSize = duration;
     }
 
-    public String getStartDuration() {
-        return m_startInterval;
+    /**
+     * @return time-step size
+     */
+    public String getTimeStepSize() {
+        return m_timeStepSize;
     }
 
     /**
@@ -291,15 +364,15 @@ final class LoopStartWindowConfiguration {
      *
      * @param duration of window.
      */
-    public void setWindowDuration(final String duration) {
-        m_windowDuration = duration;
+    public void setTimeWindowSize(final String duration) {
+        m_timeWindowSize = duration;
     }
 
     /**
      * @return duration of the window
      */
-    public String getWindowDuration() {
-        return m_windowDuration;
+    public String getTimeWindowSize() {
+        return m_timeWindowSize;
     }
 
     /**
@@ -344,7 +417,34 @@ final class LoopStartWindowConfiguration {
      * @return {@code true} if specified start time shall be used, {@code false} otherwise.
      */
     public boolean useSpecifiedStartTime() {
-        // TODO Auto-generated method stub
         return m_useSpecifiedStartTime;
+    }
+
+    /**
+     * @param windowUnit unit of the window size.
+     */
+    public void setTimeWindowUnit(final Unit windowUnit) {
+        m_timeWindowUnit = windowUnit;
+    }
+
+    /**
+     * @param stepUnit unit of the step size.
+     */
+    public void setTimeStepUnit(final Unit stepUnit) {
+        m_timeStepUnit = stepUnit;
+    }
+
+    /**
+     * @return unit of the step size.
+     */
+    public Unit getTimeStepUnit() {
+        return m_timeStepUnit;
+    }
+
+    /**
+     * @return unit of the window size.
+     */
+    public Unit getTimeWindowUnit() {
+        return m_timeWindowUnit;
     }
 }

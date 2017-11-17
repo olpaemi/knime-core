@@ -110,6 +110,7 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
     // index of current row
     private long m_currRow;
 
+    // number of rows
     private long m_rowCount;
 
     // buffered rows used for overlapping
@@ -162,7 +163,8 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
 
             /* Check if the cells have the same type as the specified start time. */
             if (m_windowConfig.useSpecifiedStartTime()) {
-                Temporal specifiedStartTime = getSpecifiedStartTime(columnSpec, m_windowConfig.getSpecifiedStartTime(), false);
+                Temporal specifiedStartTime =
+                    getSpecifiedStartTime(columnSpec, m_windowConfig.getSpecifiedStartTime(), false);
 
                 if (specifiedStartTime == null) {
                     throw new InvalidSettingsException(
@@ -171,17 +173,18 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
             }
 
             /* Check if period is set for LocalTime */
-            TemporalAmount start = getTemporalAmount(m_windowConfig.getStartDuration());
-            if(start == null) {
+            TemporalAmount start =
+                getTemporalAmount(m_windowConfig.getTimeStepSize() + m_windowConfig.getTimeStepUnit().getUnitLetter());
+            if (start == null) {
                 throw new InvalidSettingsException("No starting interval set.");
-            } else  if(start instanceof Period && columnSpec.getType().equals(DataType.getType(LocalTimeCell.class))) {
-                    throw new InvalidSettingsException("Starting inverval: Period type not allowed for LocalTime");
+            } else if (start instanceof Period && columnSpec.getType().equals(DataType.getType(LocalTimeCell.class))) {
+                throw new InvalidSettingsException("Starting inverval: Period type not allowed for LocalTime");
             }
 
-            TemporalAmount window = getTemporalAmount(m_windowConfig.getWindowDuration());
-            if(window == null) {
+            TemporalAmount window = getTemporalAmount(m_windowConfig.getTimeWindowSize() + m_windowConfig.getTimeWindowUnit().getUnitLetter());
+            if (window == null) {
                 throw new InvalidSettingsException("No window duration set.");
-            } else if(start instanceof Period && columnSpec.getType().equals(DataType.getType(LocalTimeCell.class))) {
+            } else if (start instanceof Period && columnSpec.getType().equals(DataType.getType(LocalTimeCell.class))) {
                 throw new InvalidSettingsException("Window duration: Period type not allowed for LocalTime");
             }
         }
@@ -216,7 +219,8 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
      * @param specifiedStartString specified start temporal
      * @return specified start temporal if string can be parsed, {@code null} otherwise.
      */
-    private Temporal getSpecifiedStartTime(final DataColumnSpec columnSpec, final String specifiedStartString, final boolean convertLocalDate) {
+    private Temporal getSpecifiedStartTime(final DataColumnSpec columnSpec, final String specifiedStartString,
+        final boolean convertLocalDate) {
         if (columnSpec.getType().equals(DataType.getType(LocalTimeCell.class))) {
             Optional<LocalTime> opt = DateTimeUtils.asLocalTime(specifiedStartString);
 
@@ -250,7 +254,7 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
         }
 
         if (columnSpec.getType().equals(DataType.getType(LocalDateCell.class))) {
-            Optional<LocalDateTime> opt = DateTimeUtils.asLocalDateTime(specifiedStartString+"T00:00:00");
+            Optional<LocalDateTime> opt = DateTimeUtils.asLocalDateTime(specifiedStartString + "T00:00:00");
 
             if (opt.isPresent()) {
                 return opt.get();
@@ -321,8 +325,8 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
     private BufferedDataTable[] executeTemporalForward(final BufferedDataTable table, final ExecutionContext exec) {
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
         int column = table.getDataTableSpec().findColumnIndex(m_timeColumnName);
-        TemporalAmount startInterval = getTemporalAmount(m_windowConfig.getStartDuration());
-        TemporalAmount windowDuration = getTemporalAmount(m_windowConfig.getWindowDuration());
+        TemporalAmount startInterval = getTemporalAmount(m_windowConfig.getTimeStepSize() + m_windowConfig.getTimeStepUnit().getUnitLetter());
+        TemporalAmount windowDuration = getTemporalAmount(m_windowConfig.getTimeWindowSize() + m_windowConfig.getTimeWindowUnit().getUnitLetter());
 
         /* To check if an overflow occurred concerning the current window */
         boolean overflow = false;
@@ -559,8 +563,8 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
     private BufferedDataTable[] executeTemporalBackward(final BufferedDataTable table, final ExecutionContext exec) {
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
         int column = table.getDataTableSpec().findColumnIndex(m_timeColumnName);
-        TemporalAmount startInterval = getTemporalAmount(m_windowConfig.getStartDuration());
-        TemporalAmount windowDuration = getTemporalAmount(m_windowConfig.getWindowDuration());
+        TemporalAmount startInterval = getTemporalAmount(m_windowConfig.getTimeStepSize() + m_windowConfig.getTimeStepUnit().getUnitLetter());
+        TemporalAmount windowDuration = getTemporalAmount(m_windowConfig.getTimeWindowSize() + m_windowConfig.getTimeStepUnit().getUnitLetter());
 
         /* To check if an overflow occurred concerning the current window */
         boolean overflow = false;
@@ -812,8 +816,8 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
     private BufferedDataTable[] executeTemporalCentral(final BufferedDataTable table, final ExecutionContext exec) {
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
         int column = table.getDataTableSpec().findColumnIndex(m_timeColumnName);
-        Duration startInterval = (Duration)getTemporalAmount(m_windowConfig.getStartDuration());
-        Duration windowDuration = (Duration)getTemporalAmount(m_windowConfig.getWindowDuration());
+        Duration startInterval = (Duration)getTemporalAmount(m_windowConfig.getTimeStepSize() + m_windowConfig.getTimeStepUnit().getUnitLetter());
+        Duration windowDuration = (Duration)getTemporalAmount(m_windowConfig.getTimeWindowSize() + m_windowConfig.getTimeWindowUnit().getUnitLetter());
 
         /* To check if an overflow occurred concerning the current window */
         boolean overflow = false;
@@ -1203,8 +1207,8 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
      * @return BufferedDataTable containing the current loop.
      */
     private BufferedDataTable[] executeBackward(final BufferedDataTable table, final ExecutionContext exec) {
-        int windowSize = m_windowConfig.getWindowSize();
-        int stepSize = m_windowConfig.getStepSize();
+        int windowSize = m_windowConfig.getEventWindowSize();
+        int stepSize = m_windowConfig.getEventStepSize();
         int currRowCount = 0;
 
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
@@ -1286,8 +1290,8 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
      * @return BufferedDataTable containing the current loop.
      */
     private BufferedDataTable[] executeCentral(final BufferedDataTable table, final ExecutionContext exec) {
-        int windowSize = m_windowConfig.getWindowSize();
-        int stepSize = m_windowConfig.getStepSize();
+        int windowSize = m_windowConfig.getEventWindowSize();
+        int stepSize = m_windowConfig.getEventStepSize();
         int currRowCount = 0;
 
         BufferedDataContainer container = exec.createDataContainer(table.getSpec());
@@ -1373,8 +1377,8 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
      * @return BufferedDataTable containing the current loop.
      */
     private BufferedDataTable[] executeForward(final BufferedDataTable table, final ExecutionContext exec) {
-        int windowSize = m_windowConfig.getWindowSize();
-        int stepSize = m_windowConfig.getStepSize();
+        int windowSize = m_windowConfig.getEventWindowSize();
+        int stepSize = m_windowConfig.getEventStepSize();
         int currRowCount = 0;
 
         /* Jump to next following row if step size is greater than the window size.*/
@@ -1449,17 +1453,17 @@ final class LoopStartWindowNodeModel extends NodeModel implements LoopStartNodeT
             /* If we limit the window to fit in the table we might terminate earlier. */
             if (m_windowConfig.getLimitWindow()) {
                 /* Given window is too large. */
-                if (m_rowCount < m_windowConfig.getWindowSize()) {
+                if (m_rowCount < m_windowConfig.getEventWindowSize()) {
                     return true;
                 }
 
                 switch (m_windowConfig.getWindowDefinition()) {
                     case FORWARD:
-                        return m_rowCount - m_currRow < m_windowConfig.getWindowSize();
+                        return m_rowCount - m_currRow < m_windowConfig.getEventWindowSize();
                     case BACKWARD:
                         return m_currRow >= m_rowCount;
                     case CENTRAL:
-                        return m_rowCount - m_currRow < Math.ceil(((double)m_windowConfig.getWindowSize()) / 2) - 1;
+                        return m_rowCount - m_currRow < Math.ceil(((double)m_windowConfig.getEventWindowSize()) / 2) - 1;
                     default:
                         return true;
                 }
