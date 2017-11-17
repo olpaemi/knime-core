@@ -1256,14 +1256,29 @@ public class WorkflowEditor extends GraphicalEditor implements
         if (m_manuallySetToolTip != null && m_parentEditor == null) {
             return m_manuallySetToolTip;
         }
-        // if this is a project
-        if (m_parentEditor == null) {
-            return m_manager.getID().toString() + ": "
-                    + new Path(m_fileResource.getPath()).lastSegment();
+
+        if (Wrapper.wraps(m_manager, WorkflowManager.class)) {
+            // if this is a ordinary local project
+            if (m_parentEditor == null) {
+                return m_manager.getID().toString() + ": " + new Path(m_fileResource.getPath()).lastSegment();
+            } else {
+                // we are a metanode editor
+                // return id and node name (custom name)
+                return m_manager.getDisplayLabel();
+            }
         } else {
-            // we are a metanode editor
-            // return id and node name (custom name)
-            return m_manager.getDisplayLabel();
+            //if it's not an ordinary local workflow manager it is a worklfow job
+            //(since there aren't any other WorkflowManagerUI implementations, yet)
+            //-> add a prefix to the title
+
+            if (m_parentEditor == null) {
+                //in case of a project
+                return "Job " + m_manager.getID().toString() + ": " + new Path(m_fileResource.getPath()).lastSegment();
+            } else {
+                //in case of a subworkflow
+                return "Job " + m_manager.getDisplayLabel();
+            }
+
         }
     }
 
